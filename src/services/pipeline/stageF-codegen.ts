@@ -58,7 +58,7 @@ export async function generateComponentCode(
     }
 
     console.log(
-      `[Stage F] Generated ${code.length} chars of React code in ${Date.now() - start}ms`,
+      `[Painting your UI] Generated ${code.length} chars of React code in ${Date.now() - start}ms`,
     );
 
     return {
@@ -68,12 +68,12 @@ export async function generateComponentCode(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[Stage F] Error:', message);
+    console.error('[Painting your UI] Error:', message);
     return {
       stage: 'codegen',
       data: { code: '' },
       durationMs: Date.now() - start,
-      error: `Stage F failed: ${message}`,
+      error: `Codegen failed: ${message}`,
     };
   }
 }

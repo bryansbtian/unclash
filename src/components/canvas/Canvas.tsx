@@ -208,16 +208,29 @@ export default function Canvas() {
   }, [pages.length]);
 
   // Canvas zoom (pinch / Ctrl+wheel)
+  const applyZoomDelta = useCallback((deltaY: number) => {
+    setZoom((z) => {
+      const delta = deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+      return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((z + delta) * 100) / 100));
+    });
+  }, []);
+
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       e.stopPropagation();
-      setZoom((z) => {
-        const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-        return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round((z + delta) * 100) / 100));
-      });
+      applyZoomDelta(e.deltaY);
     }
-  }, []);
+  }, [applyZoomDelta]);
+
+  // Forward zoom events coming from inside CodeFrame iframes
+  useEffect(() => {
+    const handler = (e: Event) => {
+      applyZoomDelta((e as CustomEvent<{ deltaY: number }>).detail.deltaY);
+    };
+    window.addEventListener('canvas:iframe-wheel', handler);
+    return () => window.removeEventListener('canvas:iframe-wheel', handler);
+  }, [applyZoomDelta]);
 
   // ── Hand tool panning ──
   const handlePanMouseDown = useCallback((e: React.MouseEvent) => {

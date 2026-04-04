@@ -143,6 +143,13 @@ const SELECTION_RUNTIME = `
         el = el.parentElement;
       }
     });
+
+    document.addEventListener('wheel', function(e) {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        window.parent.postMessage({ __unclash: true, type: 'wheel', deltaY: e.deltaY }, '*');
+      }
+    }, { passive: false });
   }
 
   if (document.readyState === 'loading') {
@@ -292,6 +299,10 @@ export default function CodeFrame({ page }: Props) {
 
       if (msg.type === 'dom-tree') {
         setCodeNodes((msg.nodes as CodeNode[]) ?? []);
+      }
+
+      if (msg.type === 'wheel') {
+        window.dispatchEvent(new CustomEvent('canvas:iframe-wheel', { detail: { deltaY: msg.deltaY } }));
       }
     };
 

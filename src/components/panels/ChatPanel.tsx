@@ -7,8 +7,6 @@ import {
   CheckCircle2,
   Send,
   Sparkles,
-  Info,
-  ExternalLink,
   Loader2,
   AlertCircle,
   User,
@@ -68,7 +66,7 @@ export default function ChatPanel() {
       initial.push({
         id: nextId(),
         type: "system",
-        text: "Wireframe loaded",
+        text: "Design loaded",
         timestamp: formatTime(),
       });
       addDetectionMessages(initial, page);
@@ -116,7 +114,7 @@ export default function ChatPanel() {
         {
           id: nextId(),
           type: "system",
-          text: "Wireframe ready",
+          text: "Your design is ready",
           timestamp: formatTime(),
         },
       ]);
@@ -313,33 +311,6 @@ export default function ChatPanel() {
           </div>
         )}
 
-        {generationDone && messages.length <= 15 && !isLoading && (
-          <div className="mt-2 mx-1 p-3 rounded-xl bg-(--bg-elevated) border border-(--border)">
-            <div className="flex items-start gap-2">
-              <Info className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs font-medium text-(--text-primary) mb-1">
-                  Wireframe Ready
-                </p>
-                <p className="text-[10px] text-(--text-muted) leading-relaxed">
-                  Edit blocks on the canvas or type below to ask AI to make
-                  changes.
-                </p>
-                <p className="text-[10px] text-(--text-muted) leading-relaxed mt-1">
-                  Try: &quot;Add a search bar&quot;, &quot;Make the sidebar
-                  wider&quot;, &quot;Remove the chart&quot;
-                </p>
-              </div>
-            </div>
-            <a
-              href="#"
-              className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-600 mt-2 ml-6 transition-colors"
-            >
-              For more info, visit our Docs{" "}
-              <ExternalLink className="w-2.5 h-2.5" />
-            </a>
-          </div>
-        )}
 
         <div ref={messagesEndRef} />
       </div>

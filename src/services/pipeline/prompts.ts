@@ -252,7 +252,11 @@ REQUIREMENTS:
 6. Leaf elements (span, p, button, input, img, a, li) do NOT need data-unclash-id unless they are large clickable regions.
 7. Use realistic text content copied from the screenshot (titles, labels, placeholder text, etc.).
 8. Prefer a single flat component — avoid creating helper sub-functions.
-9. For icons, use lucide-react (available as the global \`lucide\` object via CDN: e.g. \`const { Home, Search, Settings } = lucide;\`). Prefer Lucide icons over emoji or text characters. Only use emoji characters if the screenshot itself visually contains emoji.
+9. ICONS — this is mandatory:
+   a. Scan the screenshot for every icon/symbol visible in the UI (search magnifier, hamburger menu, bell, gear, user avatar, chevrons, arrows, checkmarks, etc.).
+   b. For each one, identify what it represents and use the closest matching lucide-react component (available as the global \`lucide\` object). Destructure all needed icons at the top of the function: \`const { Search, Bell, Settings, ChevronRight, User } = lucide;\`
+   c. NEVER use emoji characters, unicode symbols (→ ✓ ☰ ⚙), or plain text as a substitute for UI icons. Emoji are only allowed when the screenshot itself literally displays an emoji as text content (e.g. a label that reads "🎉 Congrats").
+   d. If you cannot identify the exact icon, pick the closest semantic match from lucide-react — do not fall back to emoji.
 10. The root element should use \`className="w-full h-full"\` to fill the artboard.
 
 LAYOUT RULES:

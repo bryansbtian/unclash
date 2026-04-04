@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
         }
         send({ type: 'title', title: toTitleCase(title) });
 
-        send({ type: 'stage', id: 'upload', status: 'complete', label: 'Upload received', description: `${dataUrls.length} file(s)` });
+        send({ type: 'stage', id: 'upload', status: 'complete', label: 'Got your design!', description: `${dataUrls.length} file(s)` });
 
         if (!hasImages && !prompt.trim()) {
           send({ type: 'error', message: 'No screenshots or prompt provided' });
@@ -76,8 +76,8 @@ export async function POST(request: NextRequest) {
 
         if (hasImages) {
           // ── Screenshot mode: Stage F first, then parse divs ──────────────
-          send({ type: 'stage', id: 'codegen', status: 'pending', label: 'Generating React component' });
-          send({ type: 'stage', id: 'parse', status: 'pending', label: 'Separating components' });
+          send({ type: 'stage', id: 'codegen', status: 'pending', label: 'Painting your UI' });
+          send({ type: 'stage', id: 'parse', status: 'pending', label: 'Finding the pieces' });
 
           const imageGroups: Array<{ pageId: string; pageName: string; dataUrl: string }> = isMulti
             ? dataUrls.map((url, i) => ({ pageId: `page-${i + 1}`, pageName: `Page ${i + 1}`, dataUrl: url }))
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
 
           for (const { pageId, pageName, dataUrl } of imageGroups) {
             // Stage F: generate React component
-            send({ type: 'stage', id: 'codegen', status: 'running', label: 'Generating React component' });
+            send({ type: 'stage', id: 'codegen', status: 'running', label: 'Painting your UI' });
             const stageFResult = await generateComponentCode(
               dataUrl,
               { width: 1440, height: 900 },
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
             );
 
             if (stageFResult.error && !stageFResult.data.code) {
-              send({ type: 'stage', id: 'codegen', status: 'failed', label: 'Generating React component', description: stageFResult.error });
+              send({ type: 'stage', id: 'codegen', status: 'failed', label: 'Painting your UI', description: stageFResult.error });
               send({ type: 'error', message: stageFResult.error });
               controller.close();
               return;
@@ -103,19 +103,19 @@ export async function POST(request: NextRequest) {
               type: 'stage',
               id: 'codegen',
               status: 'complete',
-              label: 'Generating React component',
-              description: `${stageFResult.data.code.length} chars generated`,
+              label: 'Painting your UI',
+              description: `${stageFResult.data.code.length} chars of magic`,
             });
 
             // Stage Parse: extract data-unclash-id elements from the generated JSX
-            send({ type: 'stage', id: 'parse', status: 'running', label: 'Separating components' });
+            send({ type: 'stage', id: 'parse', status: 'running', label: 'Finding the pieces' });
             const parsedNodes = parseCodeNodes(stageFResult.data.code);
             send({
               type: 'stage',
               id: 'parse',
               status: 'complete',
-              label: 'Separating components',
-              description: `${countCodeNodes(parsedNodes)} components found`,
+              label: 'Finding the pieces',
+              description: `${countCodeNodes(parsedNodes)} blocks identified`,
             });
 
             pages.push({
@@ -129,17 +129,17 @@ export async function POST(request: NextRequest) {
           }
         } else {
           // ── Prompt-only mode: use A–E pipeline ───────────────────────────
-          send({ type: 'stage', id: 'regions', status: 'pending', label: 'Planning layout' });
-          send({ type: 'stage', id: 'children', status: 'pending', label: 'Extracting components' });
-          send({ type: 'stage', id: 'assemble', status: 'pending', label: 'Building schema' });
-          send({ type: 'stage', id: 'validate', status: 'pending', label: 'Validating schema' });
-          send({ type: 'stage', id: 'wireframe', status: 'pending', label: 'Generating wireframe' });
+          send({ type: 'stage', id: 'regions', status: 'pending', label: 'Sketching the blueprint' });
+          send({ type: 'stage', id: 'children', status: 'pending', label: 'Gathering the pieces' });
+          send({ type: 'stage', id: 'assemble', status: 'pending', label: 'Wiring it up' });
+          send({ type: 'stage', id: 'validate', status: 'pending', label: 'Checking the work' });
+          send({ type: 'stage', id: 'wireframe', status: 'pending', label: 'Bringing it to life' });
 
-          send({ type: 'stage', id: 'regions', status: 'complete', label: 'Planning layout', description: 'Prompt-only mode' });
-          send({ type: 'stage', id: 'children', status: 'complete', label: 'Extracting components', description: 'Skipped' });
-          send({ type: 'stage', id: 'assemble', status: 'complete', label: 'Building schema', description: 'Skipped' });
-          send({ type: 'stage', id: 'validate', status: 'complete', label: 'Validating schema', description: 'Skipped' });
-          send({ type: 'stage', id: 'wireframe', status: 'complete', label: 'Generating wireframe', description: 'Empty page' });
+          send({ type: 'stage', id: 'regions', status: 'complete', label: 'Sketching the blueprint', description: 'Prompt-only mode' });
+          send({ type: 'stage', id: 'children', status: 'complete', label: 'Gathering the pieces', description: 'Skipped' });
+          send({ type: 'stage', id: 'assemble', status: 'complete', label: 'Wiring it up', description: 'Skipped' });
+          send({ type: 'stage', id: 'validate', status: 'complete', label: 'Checking the work', description: 'Skipped' });
+          send({ type: 'stage', id: 'wireframe', status: 'complete', label: 'Bringing it to life', description: 'Ready to edit' });
 
           pages.push({
             id: 'page-1',
