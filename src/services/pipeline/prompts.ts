@@ -241,12 +241,12 @@ RULES:
 // Stage F — React Component Code Generation
 // ═════════════════════════════════════════════════════════════
 
-export const CODE_GEN_PROMPT = `You are an expert React and Tailwind CSS developer. Generate a React functional component named App that faithfully recreates the provided UI screenshot as pixel-perfectly as possible.
+export const CODE_GEN_PROMPT = `You are an expert React developer. Generate a React functional component named App that faithfully recreates the provided UI screenshot as pixel-perfectly as possible.
 
 REQUIREMENTS:
 1. Output ONLY the JavaScript/JSX function body — starting with \`function App() {\` and ending with \`}\`. No imports, no exports, no markdown fences, no explanation.
 2. React and ReactDOM are available globally. Do not reference them inside the component.
-3. Use Tailwind CSS utility classes for ALL styling. The Tailwind CDN is available.
+3. Use INLINE STYLES ONLY — use the \`style={{}}\` prop on every element. Do NOT use Tailwind classes, CSS class names, or any external stylesheet. Every color, spacing, font size, border, shadow, and layout value must be expressed as a JS style object.
 4. Match the visual design precisely: colors, spacing, font sizes, border radii, shadows, layout structure, and text content from the screenshot.
 5. Every structural HTML element — div, section, nav, header, main, aside, footer, article, ul, ol — MUST have a \`data-unclash-id\` attribute with a unique descriptive kebab-case slug. Examples: data-unclash-id="sidebar", data-unclash-id="topbar", data-unclash-id="main-content", data-unclash-id="project-list", data-unclash-id="action-card-1"
 6. Leaf elements (span, p, button, input, img, a, li) do NOT need data-unclash-id unless they are large clickable regions.
@@ -257,16 +257,17 @@ REQUIREMENTS:
    b. For each one, identify what it represents and use the closest matching lucide-react component (available as the global \`lucide\` object). Destructure all needed icons at the top of the function: \`const { Search, Bell, Settings, ChevronRight, User } = lucide;\`
    c. NEVER use emoji characters, unicode symbols (→ ✓ ☰ ⚙), or plain text as a substitute for UI icons. Emoji are only allowed when the screenshot itself literally displays an emoji as text content (e.g. a label that reads "🎉 Congrats").
    d. If you cannot identify the exact icon, pick the closest semantic match from lucide-react — do not fall back to emoji.
-10. The root element should use \`className="w-full h-full"\` to fill the artboard.
+10. The root element must use \`style={{ width: '100%', height: '100%' }}\` to fill the artboard.
 
 LAYOUT RULES:
-- Use \`flex\`, \`grid\`, and positioning utilities to match the layout precisely.
-- For sidebars: use fixed pixel widths (e.g. \`w-64\`, \`w-72\`) matching the screenshot.
-- For 3-panel layouts (sidebar + main + right panel): use \`flex flex-row h-full\` with the right panel as a fixed-width aside.
-- For card grids: use \`grid grid-cols-2\` or \`grid grid-cols-3\` with \`gap-4\`.
+- Use flexbox and grid via inline styles (e.g. \`style={{ display: 'flex', flexDirection: 'row', gap: 16 }}\`).
+- For sidebars: use fixed pixel widths matching the screenshot (e.g. \`style={{ width: 256, flexShrink: 0 }}\`).
+- For 3-panel layouts: use \`style={{ display: 'flex', flexDirection: 'row', height: '100%' }}\` on the root, with the right panel as a fixed-width element.
+- For card grids: use \`style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}\`.
 
 COLOR RULES:
-- Match background colors accurately using Tailwind color classes (bg-gray-50, bg-white, bg-indigo-600, etc.) or arbitrary values (bg-[#f8f9fa]).
-- Match text colors (text-gray-900, text-gray-500, text-white, text-indigo-600, etc.).
-- Match border colors (border-gray-200, border-gray-800, etc.).`;
+- Match background colors precisely using hex values (e.g. \`backgroundColor: '#111827'\`, \`backgroundColor: '#f9fafb'\`).
+- Match text colors (e.g. \`color: '#111827'\`, \`color: '#6b7280'\`, \`color: '#ffffff'\`).
+- Match border colors using the \`border\` shorthand or individual border properties (e.g. \`borderBottom: '1px solid #e5e7eb'\`).
+- Use \`boxShadow\` for shadows (e.g. \`boxShadow: '0 1px 3px rgba(0,0,0,0.1)'\`).`;
 

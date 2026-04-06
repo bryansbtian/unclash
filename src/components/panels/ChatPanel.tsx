@@ -12,6 +12,8 @@ import {
   User,
   Circle,
   Clock,
+  Paperclip,
+  X,
 } from "lucide-react";
 
 interface ChatMessage {
@@ -21,6 +23,7 @@ interface ChatMessage {
   detail?: string;
   timestamp: string;
   stageStatus?: "pending" | "running" | "complete" | "failed";
+  images?: string[];
 }
 
 function formatTime(): string {
@@ -42,7 +45,11 @@ export default function ChatPanel() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [generationDone, setGenerationDone] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<File[]>([]);
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const initializedRef = useRef(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -132,22 +139,95 @@ export default function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const handleImageAttach = useCallback((files: FileList | null) => {
+    if (!files) return;
+    const newFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (newFiles.length === 0) return;
+    setAttachedImages((prev) => [...prev, ...newFiles]);
+    newFiles.forEach((file) => {
+      const url = URL.createObjectURL(file);
+      setImagePreviewUrls((prev) => [...prev, url]);
+    });
+  }, []);
+
+  const removeAttachedImage = useCallback((index: number) => {
+    setAttachedImages((prev) => prev.filter((_, i) => i !== index));
+    setImagePreviewUrls((prev) => {
+      URL.revokeObjectURL(prev[index]);
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
+  // Auto-resize textarea: shrinks/grows with content, capped at ~5 lines
+  const resizeTextarea = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  }, []);
+
+  // Handle image paste from clipboard (Cmd+V / Ctrl+V)
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageItems = Array.from(items).filter((item) => item.type.startsWith("image/"));
+    if (imageItems.length === 0) return;
+    e.preventDefault();
+    imageItems.forEach((item) => {
+      const file = item.getAsFile();
+      if (!file) return;
+      setAttachedImages((prev) => [...prev, file]);
+      const url = URL.createObjectURL(file);
+      setImagePreviewUrls((prev) => [...prev, url]);
+    });
+  }, []);
+
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
-    if (!text || !page || isLoading) return;
+    if ((!text && attachedImages.length === 0) || !page || isLoading) return;
 
+    const previewsSnapshot = [...imagePreviewUrls];
     setInputValue("");
+    setAttachedImages([]);
+    setImagePreviewUrls([]);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
     setMessages((prev) => [
       ...prev,
-      { id: nextId(), type: "user", text, timestamp: formatTime() },
+      {
+        id: nextId(),
+        type: "user",
+        text: text || "(image)",
+        images: previewsSnapshot,
+        timestamp: formatTime(),
+      },
     ]);
     setIsLoading(true);
 
     try {
+      // Convert images to base64 data URLs for the API
+      const base64Images = await Promise.all(
+        attachedImages.map(
+          (file) =>
+            new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            }),
+        ),
+      );
+
       const res = await fetch("/api/chat-modify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, currentPage: page }),
+        body: JSON.stringify({
+          message: text || "Please update the wireframe based on the attached image(s).",
+          currentPage: page,
+          images: base64Images,
+        }),
       });
       if (!res.ok) {
         const errData = await res.json();
@@ -178,7 +258,7 @@ export default function ChatPanel() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputValue, page, isLoading, replaceCurrentPage]);
+  }, [inputValue, attachedImages, imagePreviewUrls, page, isLoading, replaceCurrentPage]);
 
   function stageIcon(status?: string) {
     switch (status) {
@@ -243,6 +323,22 @@ export default function ChatPanel() {
               <div className="flex items-start gap-2.5 px-2 py-2 ml-6 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
                 <User className="w-3.5 h-3.5 text-indigo-500 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
+                  {msg.images && msg.images.length > 0 && (
+                    <div className="flex gap-1.5 flex-wrap mb-1.5">
+                      {msg.images.map((src, i) => (
+                        <div
+                          key={i}
+                          className="w-14 h-10 rounded-md overflow-hidden border border-indigo-300/40"
+                        >
+                          <img
+                            src={src}
+                            alt={`Attached ${i + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <p className="text-xs text-indigo-700 leading-relaxed whitespace-pre-wrap">
                     {msg.text}
                   </p>
@@ -317,14 +413,61 @@ export default function ChatPanel() {
 
       {/* Input */}
       <div className="px-3 pb-3 pt-1">
-        <div className="flex items-center gap-2 bg-(--bg-elevated) border border-(--border) rounded-xl px-3 py-2.5 focus-within:border-indigo-500/50 transition-colors">
+        {/* Image previews */}
+        {imagePreviewUrls.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap mb-2">
+            {imagePreviewUrls.map((src, i) => (
+              <div key={i} className="relative group">
+                <div className="w-14 h-10 rounded-md overflow-hidden border border-(--border)">
+                  <img
+                    src={src}
+                    alt={`Attachment ${i + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <button
+                  onClick={() => removeAttachedImage(i)}
+                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-slate-700 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 bg-(--bg-elevated) border border-(--border) rounded-xl px-3 py-2 focus-within:border-indigo-500/50 transition-colors">
+          {/* Hidden file input */}
           <input
-            type="text"
-            placeholder="What would you like to change?"
-            className="flex-1 bg-transparent text-xs text-(--text-primary) placeholder-(--text-muted) outline-none"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => handleImageAttach(e.target.files)}
+            onClick={(e) => { (e.target as HTMLInputElement).value = ""; }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
             disabled={isLoading || !generationDone}
+            title="Attach image"
+            className="p-1 rounded-md text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-secondary) disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0 self-end mb-0.5"
+          >
+            <Paperclip className="w-3.5 h-3.5" />
+          </button>
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            placeholder="What would you like to change?"
+            className="flex-1 bg-transparent text-xs text-(--text-primary) placeholder-(--text-muted) outline-none resize-none"
+            style={{ minHeight: "20px", maxHeight: "120px", lineHeight: "1.5", paddingTop: "1px" }}
+            value={inputValue}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              resizeTextarea();
+            }}
+            disabled={isLoading || !generationDone}
+            onPaste={handlePaste}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -334,8 +477,8 @@ export default function ChatPanel() {
           />
           <button
             onClick={handleSend}
-            disabled={!inputValue.trim() || isLoading || !generationDone}
-            className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            disabled={(!inputValue.trim() && attachedImages.length === 0) || isLoading || !generationDone}
+            className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0 self-end mb-0.5"
           >
             {isLoading ? (
               <Loader2 className="w-3 h-3 animate-spin" />

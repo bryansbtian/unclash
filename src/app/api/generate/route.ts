@@ -55,7 +55,17 @@ export async function POST(request: NextRequest) {
               maxTokens: 20,
               temperature: 0,
             });
-            title = titleText.trim() || 'New Project';
+            // Strip code fences, markdown syntax, take first line, limit to 6 words
+            title = titleText
+              .split('\n')[0]
+              .replace(/```[\s\S]*/g, '')
+              .replace(/[`*_#[\]()]/g, '')
+              .trim()
+              .split(/\s+/)
+              .slice(0, 6)
+              .join(' ')
+              .replace(/[,;:.!?]+$/, '')
+              .trim() || 'New Project';
           } catch {
             title = prompt.trim().slice(0, 40);
           }
