@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { Page, CodeNode } from '@/types/schema';
 import { generateComponentCode } from '@/services/pipeline/stageF-codegen';
+import { detectScreensInImage } from '@/services/pipeline/stageA-regions';
 import {
   generateText,
   getAnthropicFastModel,
@@ -86,20 +87,78 @@ export async function POST(request: NextRequest) {
 
         if (hasImages) {
           // ── Screenshot mode: Stage F first, then parse divs ──────────────
-          send({ type: 'stage', id: 'codegen', status: 'pending', label: 'Painting your UI' });
+          type ImageGroup = {
+            pageId: string;
+            pageName: string;
+            dataUrl: string;
+            screenFocus?: { index: number; total: number; name: string; position: string };
+            pageViewport?: { width: number; height: number };
+          };
+
+          let imageGroups: ImageGroup[];
+
+          if (isMulti) {
+            // Multiple files → one page per file
+            imageGroups = dataUrls.map((url, i) => ({
+              pageId: `page-${i + 1}`,
+              pageName: `Page ${i + 1}`,
+              dataUrl: url,
+            }));
+          } else {
+            // Single file → detect if it contains multiple screens
+            send({ type: 'stage', id: 'detect', status: 'running', label: 'Counting your screens' });
+            const detection = await detectScreensInImage(dataUrls[0], MODEL);
+            const { screenCount, viewportType, screens } = detection.data;
+
+            // Determine page dimensions from detected viewport type
+            const pageViewport = viewportType === 'mobile'
+              ? { width: 390, height: 844 }
+              : viewportType === 'tablet'
+              ? { width: 768, height: 1024 }
+              : { width: 1440, height: 900 };
+
+            if (screenCount > 1) {
+              send({
+                type: 'stage',
+                id: 'detect',
+                status: 'complete',
+                label: 'Counting your screens',
+                description: `${screenCount} pages spotted!`,
+              });
+              imageGroups = screens.map((screen, i) => ({
+                pageId: `page-${i + 1}`,
+                pageName: screen.name,
+                dataUrl: dataUrls[0],
+                screenFocus: { index: i, total: screenCount, name: screen.name, position: screen.position },
+                pageViewport,
+              }));
+            } else {
+              send({
+                type: 'stage',
+                id: 'detect',
+                status: 'complete',
+                label: 'Counting your screens',
+                description: 'Just the one',
+              });
+              imageGroups = [{ pageId: 'page-1', pageName: screens[0]?.name || 'Home', dataUrl: dataUrls[0], pageViewport }];
+            }
+          }
+
           send({ type: 'stage', id: 'parse', status: 'pending', label: 'Finding the pieces' });
+          send({ type: 'stage', id: 'codegen', status: 'pending', label: 'Painting your UI' });
 
-          const imageGroups: Array<{ pageId: string; pageName: string; dataUrl: string }> = isMulti
-            ? dataUrls.map((url, i) => ({ pageId: `page-${i + 1}`, pageName: `Page ${i + 1}`, dataUrl: url }))
-            : [{ pageId: 'page-1', pageName: 'Home', dataUrl: dataUrls[0] }];
-
-          for (const { pageId, pageName, dataUrl } of imageGroups) {
+          for (let gi = 0; gi < imageGroups.length; gi++) {
+            const { pageId, pageName, dataUrl, screenFocus, pageViewport } = imageGroups[gi];
+            const viewport = pageViewport ?? { width: 1440, height: 900 };
+            // Add a delay between screens to avoid hitting output token rate limits
+            if (gi > 0) await sleep(12000);
             // Stage F: generate React component
             send({ type: 'stage', id: 'codegen', status: 'running', label: 'Painting your UI' });
             const stageFResult = await generateComponentCode(
               dataUrl,
-              { width: 1440, height: 900 },
+              viewport,
               FAST_MODEL,
+              screenFocus,
             );
 
             if (stageFResult.error && !stageFResult.data.code) {
@@ -131,8 +190,8 @@ export async function POST(request: NextRequest) {
             pages.push({
               id: pageId,
               name: pageName,
-              width: 1440,
-              height: 900,
+              width: viewport.width,
+              height: viewport.height,
               children: [],
               code: stageFResult.data.code,
             });

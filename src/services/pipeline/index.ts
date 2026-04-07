@@ -9,7 +9,7 @@
  * The streaming /api/generate route orchestrates stages directly.
  */
 
-export { detectTopLevelRegions, detectMultiScreenshotRegions } from './stageA-regions';
+export { detectTopLevelRegions, detectMultiScreenshotRegions, detectScreensInImage } from './stageA-regions';
 export { extractAllRegionChildren } from './stageB-children';
 export { assembleSchema } from './stageC-assemble';
 export { repairAndValidate } from './stageD-repair';
