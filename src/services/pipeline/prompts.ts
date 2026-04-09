@@ -248,8 +248,8 @@ REQUIREMENTS:
 2. React and ReactDOM are available globally. Do not reference them inside the component.
 3. Use INLINE STYLES ONLY — use the \`style={{}}\` prop on every element. Do NOT use Tailwind classes, CSS class names, or any external stylesheet. Every color, spacing, font size, border, shadow, and layout value must be expressed as a JS style object.
 4. Match the visual design precisely: colors, spacing, font sizes, border radii, shadows, layout structure, and text content from the screenshot.
-5. Every structural HTML element — div, section, nav, header, main, aside, footer, article, ul, ol — MUST have a \`data-unclash-id\` attribute with a unique descriptive kebab-case slug. Examples: data-unclash-id="sidebar", data-unclash-id="topbar", data-unclash-id="main-content", data-unclash-id="project-list", data-unclash-id="action-card-1"
-6. Leaf elements (span, p, button, input, img, a, li) do NOT need data-unclash-id unless they are large clickable regions.
+5. EVERY HTML element — div, section, nav, header, main, aside, footer, article, ul, ol, li, button, a, input, textarea, select, img, h1, h2, h3, h4, p, span — MUST have a \`data-unclash-id\` attribute with a unique descriptive kebab-case slug. Examples: data-unclash-id="sidebar", data-unclash-id="topbar", data-unclash-id="magi-balance-card", data-unclash-id="deposit-btn", data-unclash-id="balance-amount", data-unclash-id="nav-dashboard"
+6. IDs must be unique across the entire component and descriptive of the element's role (e.g. "deposit-btn" not "btn-1", "portfolio-value-label" not "span-3").
 7. Use realistic text content copied from the screenshot (titles, labels, placeholder text, etc.).
 8. Prefer a single flat component — avoid creating helper sub-functions.
 9. ICONS — this is mandatory:

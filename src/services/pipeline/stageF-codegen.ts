@@ -13,29 +13,35 @@ import { StageResult } from '@/types/pipeline';
 
 /**
  * Detects and repairs truncated JSX code — closes any open strings,
- * removes incomplete last lines, and balances curly braces so the
- * function body always ends with a valid closing `}`.
+ * removes incomplete last lines, balances curly braces, and closes
+ * unclosed JSX return statements so the function body is always valid.
  */
 function repairTruncatedCode(code: string): string {
   let trimmed = code.trimEnd();
-  if (trimmed.endsWith('}')) return code; // looks complete
 
   const lines = trimmed.split('\n');
 
-  // Drop the last line if it's clearly incomplete (no safe ending character)
-  // Safe endings: >, ;, {, }, comma, or closing paren on its own
+  // Drop the last line if it's clearly incomplete (no safe ending character).
+  // Safe endings: >, ;, {, }
+  // NOTE: we intentionally exclude ',' — a trailing comma always means the line
+  // is mid-expression (e.g. style={{ color: '#9ca3af', <-- truncated here).
+  // NOTE: we do NOT short-circuit on endsWith('}') here because a JSX comment
+  // like {/* Middle Panel */} ends with '}' but the surrounding return() may
+  // still be unclosed — that naive check is what caused the render error.
   let lastSafe = lines.length - 1;
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = lines[i].trimEnd();
-    if (l.endsWith('>') || l.endsWith(';') || l.endsWith('{') || l.endsWith('}') || l.endsWith(',') || l.endsWith('(')) {
+    if (l.endsWith('>') || l.endsWith(';') || l.endsWith('{') || l.endsWith('}')) {
       lastSafe = i;
       break;
     }
   }
   trimmed = lines.slice(0, lastSafe + 1).join('\n');
 
-  // Count unbalanced braces (outside strings/template literals)
+  // Count unbalanced braces AND parens (outside strings/template literals).
+  // parenDepth > 0 means we're inside an unclosed return (...) JSX block.
   let braceDepth = 0;
+  let parenDepth = 0;
   let inStr: string | null = null;
 
   for (let i = 0; i < trimmed.length; i++) {
@@ -47,10 +53,26 @@ function repairTruncatedCode(code: string): string {
       if (ch === '"' || ch === "'" || ch === '`') inStr = ch;
       else if (ch === '{') braceDepth++;
       else if (ch === '}') braceDepth--;
+      else if (ch === '(') parenDepth++;
+      else if (ch === ')') parenDepth--;
     }
   }
 
-  // Close all open braces
+  // If we're inside an unclosed JSX return (...), close the root JSX element
+  // and the paren(s) before closing braces.
+  if (parenDepth > 0) {
+    trimmed += '\n    </div>';
+    trimmed += '\n  )'.repeat(parenDepth);
+    // Re-tally brace/paren counts for the appended text
+    for (const ch of `\n    </div>\n  )`.repeat(parenDepth)) {
+      if (ch === '(') parenDepth--;      // closing parens reduce depth
+      else if (ch === ')') parenDepth--; // already accounted for above
+      else if (ch === '{') braceDepth++;
+      else if (ch === '}') braceDepth--;
+    }
+  }
+
+  // Close all open braces (function body / object literals)
   if (braceDepth > 0) {
     trimmed += '\n' + '}'.repeat(braceDepth);
   }
@@ -81,7 +103,7 @@ export async function generateComponentCode(
           text: `Recreate this UI as a React App component. Viewport: ${viewport.width}×${viewport.height}px. Every div/section/nav/header/main/aside/footer must have data-unclash-id. Output only the function body starting with \`function App() {\`. Keep the code concise — avoid unnecessary comments or repetition. IMPORTANT: Do NOT add a device frame, phone shell, or mockup wrapper — the artboard IS the device, so fill the full ${viewport.width}×${viewport.height}px viewport directly.${screenInstruction}`,
         },
       ],
-      maxTokens: 4500,
+      maxTokens: 16000,
       temperature: 0.1,
     });
 

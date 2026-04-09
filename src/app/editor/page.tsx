@@ -25,6 +25,8 @@ export default function EditorPage() {
     setPages,
     setOriginalScreenshot,
     setProjectName,
+    selectNode,
+    setSelectedElement,
   } = useEditorStore();
 
   useEditorKeyboard();
@@ -151,6 +153,10 @@ export default function EditorPage() {
         (e.key === "+" || e.key === "-" || e.key === "=" || e.key === "0")
       ) {
         e.preventDefault();
+      }
+      if (e.key === "Escape") {
+        selectNode(null);
+        setSelectedElement(null);
       }
     };
     document.addEventListener("wheel", onWheel, { passive: false });

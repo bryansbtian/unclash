@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useMemo, useState } from 'react';
+import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { Page, ElementOverride, SelectedElementInfo, CodeNode } from '@/types/schema';
 import { useEditorStore } from '@/store/editorStore';
+import { GripVertical } from 'lucide-react';
 
 // ── Selection + hover runtime injected into every iframe ────
 const SELECTION_RUNTIME = `
@@ -34,6 +35,36 @@ const SELECTION_RUNTIME = `
       }
     }
 
+    if (msg.type === 'get-rect') {
+      var el = document.querySelector('[data-unclash-id="' + msg.id + '"]');
+      if (el) {
+        var rect = el.getBoundingClientRect();
+        var cs = window.getComputedStyle(el);
+        var directText = Array.from(el.childNodes)
+          .filter(function(n) { return n.nodeType === 3; })
+          .map(function(n) { return n.textContent || ''; })
+          .join('').trim();
+        window.parent.postMessage({
+          __unclash: true,
+          type: 'element-selected',
+          id: msg.id,
+          tagName: el.tagName.toLowerCase(),
+          className: el.getAttribute('class') || '',
+          rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+          styles: {
+            backgroundColor: cs.backgroundColor,
+            color: cs.color,
+            fontSize: cs.fontSize,
+            fontWeight: cs.fontWeight,
+            borderRadius: cs.borderRadius,
+            width: rect.width,
+            height: rect.height,
+          },
+          textContent: directText,
+        }, '*');
+      }
+    }
+
     if (msg.type === 'update-text') {
       var el = document.querySelector('[data-unclash-id="' + msg.id + '"]');
       if (!el) return;
@@ -41,6 +72,12 @@ const SELECTION_RUNTIME = `
       if (textNodes.length > 0) {
         textNodes[0].textContent = msg.text;
       }
+    }
+
+    if (msg.type === 'dblclick-element') {
+      var el = document.querySelector('[data-unclash-id="' + msg.id + '"]');
+      if (!el) return;
+      el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     }
   });
 
@@ -150,6 +187,60 @@ const SELECTION_RUNTIME = `
         window.parent.postMessage({ __unclash: true, type: 'wheel', deltaY: e.deltaY }, '*');
       }
     }, { passive: false });
+
+    // Double-click → inline text editing
+    var _editingEl = null;
+    document.addEventListener('dblclick', function(e) {
+      var el = e.target;
+      while (el && el !== document.documentElement) {
+        if (el.dataset && el.dataset.unclashId) {
+          e.preventDefault();
+          e.stopPropagation();
+          _editingEl = el;
+          el.contentEditable = 'true';
+          el.style.outline = '2px solid #589df6';
+          el.style.cursor = 'text';
+          // Select all text in the element
+          var range = document.createRange();
+          range.selectNodeContents(el);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          el.focus();
+
+          function finishEdit() {
+            if (!_editingEl) return;
+            var editedEl = _editingEl;
+            _editingEl = null;
+            editedEl.contentEditable = 'false';
+            editedEl.style.cursor = '';
+            var newText = editedEl.innerText;
+            window.parent.postMessage({
+              __unclash: true,
+              type: 'text-edited',
+              id: editedEl.dataset.unclashId,
+              text: newText,
+            }, '*');
+          }
+
+          el.addEventListener('blur', finishEdit, { once: true });
+          el.addEventListener('keydown', function onKey(ke) {
+            if (ke.key === 'Escape') {
+              el.removeEventListener('keydown', onKey);
+              el.blur();
+            }
+            // Enter without shift commits the edit
+            if (ke.key === 'Enter' && !ke.shiftKey) {
+              ke.preventDefault();
+              el.removeEventListener('keydown', onKey);
+              el.blur();
+            }
+          });
+          return;
+        }
+        el = el.parentElement;
+      }
+    }, true);
   }
 
   if (document.readyState === 'loading') {
@@ -173,6 +264,7 @@ function buildOverrideStyles(overrides: Record<string, ElementOverride>): string
       if (o.width) props.push(`width: ${o.width} !important`);
       if (o.height) props.push(`height: ${o.height} !important`);
       if (o.padding) props.push(`padding: ${o.padding} !important`);
+      if (o.transform) props.push(`transform: ${o.transform} !important`);
       return props.length > 0
         ? `[data-unclash-id="${id}"] { ${props.join('; ')}; }`
         : '';
@@ -247,6 +339,8 @@ function buildSrcdoc(code: string, overrides: Record<string, ElementOverride>): 
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"><\/script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>
+  <!-- lucide base UMD: exports window.lucide with icon node arrays — no React dep needed -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"><\/script>
 
   <script>
   function _showErr(msg) {
@@ -270,23 +364,43 @@ function buildSrcdoc(code: string, overrides: Record<string, ElementOverride>): 
     _showErr(m);
   };
 
-  // Lucide icon proxy: circle placeholder for unknown icons
-  window.lucide = new Proxy({}, {
-    get: function(_, name) {
-      return function LucideIcon(props) {
-        var size = (props && (props.size || props.width)) || 24;
-        var color = (props && props.color) || 'currentColor';
-        var sw = (props && props.strokeWidth) != null ? String(props.strokeWidth) : '2';
-        var a = {
-          xmlns: 'http://www.w3.org/2000/svg', width: size, height: size,
-          viewBox: '0 0 24 24', fill: 'none', stroke: color, strokeWidth: sw,
-          strokeLinecap: 'round', strokeLinejoin: 'round',
-          className: props && props.className, style: props && props.style,
+  // The lucide UMD bundle (loaded above) sets window.lucide with icon node arrays,
+  // e.g. window.lucide.Search = [["circle",{cx:"11",cy:"11",r:"8"}],["path",{d:"m21 21-4.3-4.3"}]]
+  // We capture that raw data, then replace window.lucide with a Proxy that wraps each
+  // icon array as a proper React component.
+  var _lucideData = window.lucide || {};
+  window.lucide = new Proxy(_lucideData, {
+    get: function(target, name) {
+      if (typeof name !== 'string') return undefined;
+      var nodes = target[name]; // [[tagName, attrs], ...]
+      if (Array.isArray(nodes)) {
+        return function LucideIcon(props) {
+          var p = props || {};
+          var size = p.size || p.width || 24;
+          var color = p.color || 'currentColor';
+          var sw = (p.strokeWidth != null) ? p.strokeWidth : 2;
+          var children = nodes.map(function(node, i) {
+            return React.createElement(node[0], Object.assign({ key: i }, node[1]));
+          });
+          return React.createElement('svg',
+            { xmlns:'http://www.w3.org/2000/svg', width:size, height:size,
+              viewBox:'0 0 24 24', fill:'none', stroke:color, strokeWidth:sw,
+              strokeLinecap:'round', strokeLinejoin:'round',
+              className:p.className, style:p.style },
+            children
+          );
         };
-        return React.createElement('svg', a,
-          React.createElement('circle', { cx:'12', cy:'12', r:'9' }),
-          React.createElement('line', { x1:'12', y1:'8', x2:'12', y2:'12' }),
-          React.createElement('line', { x1:'12', y1:'16', x2:'12.01', y2:'16' })
+      }
+      // Unknown icon → faint box so it doesn't disrupt the layout
+      return function UnknownIcon(props) {
+        var size = (props && (props.size || props.width)) || 24;
+        return React.createElement('svg',
+          { xmlns:'http://www.w3.org/2000/svg', width:size, height:size,
+            viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:'1.5',
+            strokeLinecap:'round', strokeLinejoin:'round',
+            opacity:'0.2',
+            className:props && props.className, style:props && props.style },
+          React.createElement('rect',{ x:'3', y:'3', width:'18', height:'18', rx:'2' })
         );
       };
     }
@@ -312,14 +426,50 @@ function buildSrcdoc(code: string, overrides: Record<string, ElementOverride>): 
 </html>`;
 }
 
+// Parse translate(Xpx, Ypx) from a transform string
+function parseTranslate(transform: string): { x: number; y: number } {
+  const match = transform.match(/translate\(\s*([-\d.]+)px,\s*([-\d.]+)px\s*\)/);
+  if (match) return { x: parseFloat(match[1]), y: parseFloat(match[2]) };
+  return { x: 0, y: 0 };
+}
+
+interface SelectedRect {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface Props {
   page: Page;
 }
 
 export default function CodeFrame({ page }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const { setSelectedElement, setCodeNodes, selectedElementId, currentPageId } = useEditorStore();
+  const { setSelectedElement, setCodeNodes, selectedElementId, currentPageId, updateElementOverride } = useEditorStore();
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [isEditingText, setIsEditingText] = useState(false);
+
+  // Drag overlay state
+  const [selectedRect, setSelectedRect] = useState<SelectedRect | null>(null);
+  // Live drag offset (screen coords divided by zoom) — resets to 0 on each drag start
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  // Accumulated total offset per element id (persists across drags within session)
+  const elementDeltasRef = useRef<Record<string, { x: number; y: number }>>({});
+  const isDraggingRef = useRef(false);
+
+  // Initialise elementDeltasRef from existing overrides whenever code changes
+  useEffect(() => {
+    elementDeltasRef.current = {};
+    const overrides = page.elementOverrides ?? {};
+    for (const [id, o] of Object.entries(overrides)) {
+      if (o.transform) {
+        elementDeltasRef.current[id] = parseTranslate(o.transform);
+      }
+    }
+  }, [page.code]);
 
   const srcdoc = useMemo(
     () => {
@@ -346,10 +496,19 @@ export default function CodeFrame({ page }: Props) {
           textContent: msg.textContent as string,
         };
         setSelectedElement(msg.id ?? null, info);
+
+        // Track rect for drag overlay
+        const r = msg.rect as { x: number; y: number; width: number; height: number } | undefined;
+        if (r && msg.id) {
+          setSelectedRect({ id: msg.id as string, x: r.x, y: r.y, width: r.width, height: r.height });
+          setDragOffset({ x: 0, y: 0 });
+          dragOffsetRef.current = { x: 0, y: 0 };
+        }
       }
 
       if (msg.type === 'element-deselected') {
         setSelectedElement(null);
+        setSelectedRect(null);
       }
 
       if (msg.type === 'dom-tree') {
@@ -363,11 +522,20 @@ export default function CodeFrame({ page }: Props) {
       if (msg.type === 'wheel') {
         window.dispatchEvent(new CustomEvent('canvas:iframe-wheel', { detail: { deltaY: msg.deltaY } }));
       }
+
+      if (msg.type === 'text-edited' && msg.id && currentPageId) {
+        updateElementOverride(currentPageId, msg.id as string, { textContent: msg.text as string });
+        setIsEditingText(false);
+      }
+
+      if (msg.type === 'dblclick-element') {
+        setIsEditingText(true);
+      }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [setSelectedElement]);
+  }, [setSelectedElement, setCodeNodes]);
 
   // Sync selection highlight into the iframe
   useEffect(() => {
@@ -383,8 +551,82 @@ export default function CodeFrame({ page }: Props) {
   useEffect(() => {
     if (currentPageId !== page.id) {
       setSelectedElement(null);
+      setSelectedRect(null);
     }
   }, [currentPageId, page.id, setSelectedElement]);
+
+  // ── Drag logic ──────────────────────────────────────────────────────────
+  const handleOverlayMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!selectedRect) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    // Compute current canvas zoom from the iframe's rendered size vs page width
+    const iframeClientRect = iframe.getBoundingClientRect();
+    const zoom = iframeClientRect.width > 0 ? iframeClientRect.width / page.width : 1;
+
+    const startMouseX = e.clientX;
+    const startMouseY = e.clientY;
+    const elementId = selectedRect.id;
+    isDraggingRef.current = false;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      isDraggingRef.current = true;
+
+      const dx = (ev.clientX - startMouseX) / zoom;
+      const dy = (ev.clientY - startMouseY) / zoom;
+      dragOffsetRef.current = { x: dx, y: dy };
+      setDragOffset({ x: dx, y: dy });
+
+      // Compute total transform = accumulated previous + current drag
+      const prev = elementDeltasRef.current[elementId] ?? { x: 0, y: 0 };
+      const totalX = prev.x + dx;
+      const totalY = prev.y + dy;
+
+      iframe.contentWindow?.postMessage({
+        __unclash: true,
+        type: 'update-style',
+        id: elementId,
+        styles: { transform: `translate(${totalX}px, ${totalY}px)` },
+      }, '*');
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+
+      if (!isDraggingRef.current) {
+        // Click without drag — do nothing (element already selected)
+        isDraggingRef.current = false;
+        return;
+      }
+
+      const { x: dx, y: dy } = dragOffsetRef.current;
+
+      // Commit accumulated delta
+      const prev = elementDeltasRef.current[elementId] ?? { x: 0, y: 0 };
+      const totalX = prev.x + dx;
+      const totalY = prev.y + dy;
+      elementDeltasRef.current[elementId] = { x: totalX, y: totalY };
+
+      // Persist to store (survives re-renders)
+      updateElementOverride(page.id, elementId, {
+        transform: `translate(${totalX}px, ${totalY}px)`,
+      });
+
+      // Move the overlay to follow the element's new visual position
+      setSelectedRect(prev => prev ? { ...prev, x: prev.x + dx, y: prev.y + dy } : null);
+      setDragOffset({ x: 0, y: 0 });
+      dragOffsetRef.current = { x: 0, y: 0 };
+      isDraggingRef.current = false;
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, [selectedRect, page.id, page.width, updateElementOverride]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -394,6 +636,79 @@ export default function CodeFrame({ page }: Props) {
         srcDoc={srcdoc}
         title={`canvas-${page.id}`}
       />
+
+      {/* Drag overlay — hidden while inline text editing is active */}
+      {selectedRect && !renderError && !isEditingText && (
+        <div
+          onMouseDown={handleOverlayMouseDown}
+          onDoubleClick={(e) => {
+            // Let dblclick pass through to the iframe so inline editing works
+            e.stopPropagation();
+            const iframe = iframeRef.current;
+            if (!iframe?.contentWindow || !selectedRect) return;
+            iframe.contentWindow.postMessage(
+              { __unclash: true, type: 'dblclick-element', id: selectedRect.id },
+              '*',
+            );
+          }}
+          style={{
+            position: 'absolute',
+            left: selectedRect.x + dragOffset.x,
+            top: selectedRect.y + dragOffset.y,
+            width: selectedRect.width,
+            height: selectedRect.height,
+            cursor: isDraggingRef.current ? 'grabbing' : 'grab',
+            zIndex: 20,
+            boxSizing: 'border-box',
+            border: '2px solid #589df6',
+            background: 'rgba(88,157,246,0.08)',
+            pointerEvents: 'all',
+          }}
+        >
+          {/* Drag handle badge */}
+          <div
+            style={{
+              position: 'absolute',
+              top: -22,
+              left: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3,
+              background: '#589df6',
+              color: '#fff',
+              fontSize: 10,
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: '4px 4px 0 0',
+              whiteSpace: 'nowrap',
+              userSelect: 'none',
+              pointerEvents: 'none',
+            }}
+          >
+            <GripVertical size={10} />
+            {selectedRect.id}
+          </div>
+          {/* Corner resize indicator (visual only) */}
+          {(['tl', 'tr', 'bl', 'br'] as const).map((corner) => (
+            <div
+              key={corner}
+              style={{
+                position: 'absolute',
+                width: 8,
+                height: 8,
+                background: '#fff',
+                border: '2px solid #589df6',
+                borderRadius: 2,
+                ...(corner === 'tl' ? { top: -4, left: -4 } :
+                    corner === 'tr' ? { top: -4, right: -4 } :
+                    corner === 'bl' ? { bottom: -4, left: -4 } :
+                                      { bottom: -4, right: -4 }),
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {renderError && (
         <div style={{
           position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.95)',

@@ -47,6 +47,7 @@ export interface ElementOverride {
   height?: string;
   padding?: string;
   textContent?: string;
+  transform?: string;
 }
 
 export interface SelectedElementInfo {

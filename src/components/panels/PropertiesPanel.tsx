@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useEditorStore, useCurrentPage } from "@/store/editorStore";
-import { NODE_TYPES, NodeType, WireframeNode } from "@/types/schema";
+import { NODE_TYPES, NodeType, WireframeNode, CodeNode } from "@/types/schema";
 import {
   Square,
   PanelLeft,
@@ -30,12 +30,260 @@ import {
   HelpCircle,
   Link2,
   LayoutDashboard,
+  ChevronRight,
+  Box,
+  List,
+  MousePointer2,
+  Minus,
+  Hash,
 } from "lucide-react";
 
 type PanelTab = "design" | "layers" | "interaction";
 
+// ── Figma-like Code Layer tree ────────────────────────────
+
+function tagIcon(tag: string): React.ReactNode {
+  if (['button', 'a'].includes(tag)) return <MousePointer2 className="w-3 h-3" />;
+  if (['input', 'textarea', 'select'].includes(tag)) return <TextCursorInput className="w-3 h-3" />;
+  if (['p', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'label'].includes(tag)) return <Type className="w-3 h-3" />;
+  if (['img'].includes(tag)) return <Image className="w-3 h-3" />;
+  if (['ul', 'ol', 'li'].includes(tag)) return <List className="w-3 h-3" />;
+  if (['hr'].includes(tag)) return <Minus className="w-3 h-3" />;
+  if (['nav', 'header', 'footer'].includes(tag)) return <Navigation className="w-3 h-3" />;
+  if (['aside'].includes(tag)) return <PanelLeft className="w-3 h-3" />;
+  if (['table', 'tr', 'td', 'th', 'thead', 'tbody'].includes(tag)) return <Table className="w-3 h-3" />;
+  return <Box className="w-3 h-3" />;
+}
+
+function sendGetRect(pageId: string, elementId: string) {
+  const iframe = document.querySelector<HTMLIFrameElement>(`[title="canvas-${pageId}"]`);
+  iframe?.contentWindow?.postMessage(
+    { __unclash: true, type: 'get-rect', id: elementId },
+    '*',
+  );
+}
+
+function CodeLayerRow({
+  node,
+  depth,
+  pageId,
+  expandedIds,
+  toggleExpand,
+  onSelect,
+}: {
+  node: CodeNode;
+  depth: number;
+  pageId: string;
+  expandedIds: Set<string>;
+  toggleExpand: (id: string) => void;
+  onSelect: () => void;
+}) {
+  const { selectedElementId, setSelectedElement } = useEditorStore();
+  const isSelected = selectedElementId === node.id;
+  const isExpanded = expandedIds.has(node.id);
+  const hasChildren = node.children.length > 0;
+
+  const handleClick = useCallback(() => {
+    if (isSelected) {
+      setSelectedElement(null);
+    } else {
+      setSelectedElement(node.id);
+      sendGetRect(pageId, node.id);
+      onSelect();
+    }
+  }, [isSelected, node.id, pageId, setSelectedElement, onSelect]);
+
+  return (
+    <>
+      <div
+        className={`group flex items-center gap-0 min-w-0 cursor-pointer select-none rounded-sm transition-colors ${
+          isSelected
+            ? 'bg-[#2a5fc4]/80 text-white'
+            : 'hover:bg-white/5 text-[#c8c8d0]'
+        }`}
+        style={{ paddingLeft: depth * 16 + 4, paddingRight: 6, paddingTop: 3, paddingBottom: 3 }}
+        onClick={handleClick}
+      >
+        {/* Expand chevron */}
+        <button
+          className={`w-4 h-4 flex items-center justify-center shrink-0 transition-transform ${
+            isSelected ? 'text-white/70' : 'text-[#6b7280]'
+          } ${hasChildren ? 'hover:text-white' : 'opacity-0 pointer-events-none'}`}
+          onClick={(e) => { e.stopPropagation(); if (hasChildren) toggleExpand(node.id); }}
+        >
+          <ChevronRight
+            className={`w-3 h-3 transition-transform duration-150 ${isExpanded && hasChildren ? 'rotate-90' : ''}`}
+          />
+        </button>
+
+        {/* Icon */}
+        <span className={`shrink-0 mr-1.5 ${isSelected ? 'text-white/80' : 'text-[#8b8b99]'}`}>
+          {tagIcon(node.tagName)}
+        </span>
+
+        {/* Label — element id */}
+        <span className="truncate text-[11px] font-medium flex-1 min-w-0">{node.id}</span>
+
+        {/* Tag name badge */}
+        <span className={`shrink-0 text-[9px] font-mono ml-2 ${isSelected ? 'text-white/50' : 'text-[#6b7280]'}`}>
+          {node.tagName}
+        </span>
+      </div>
+
+      {/* Children */}
+      {hasChildren && isExpanded && node.children.map((child) => (
+        <CodeLayerRow
+          key={child.id}
+          node={child}
+          depth={depth + 1}
+          pageId={pageId}
+          expandedIds={expandedIds}
+          toggleExpand={toggleExpand}
+          onSelect={onSelect}
+        />
+      ))}
+    </>
+  );
+}
+
+function WireframeLayerRow({
+  node,
+  depth,
+  expandedIds,
+  toggleExpand,
+  onSelect,
+}: {
+  node: WireframeNode;
+  depth: number;
+  expandedIds: Set<string>;
+  toggleExpand: (id: string) => void;
+  onSelect: () => void;
+}) {
+  const { selectedNodeId, selectNode } = useEditorStore();
+  const isSelected = selectedNodeId === node.id;
+  const isExpanded = expandedIds.has(node.id);
+  const hasChildren = node.children.length > 0;
+  const icon = TYPE_ICONS_MAP[node.type] ?? <Box className="w-3 h-3" />;
+
+  return (
+    <>
+      <div
+        className={`group flex items-center gap-0 min-w-0 cursor-pointer select-none rounded-sm transition-colors ${
+          isSelected
+            ? 'bg-[#2a5fc4]/80 text-white'
+            : 'hover:bg-white/5 text-[#c8c8d0]'
+        }`}
+        style={{ paddingLeft: depth * 16 + 4, paddingRight: 6, paddingTop: 3, paddingBottom: 3 }}
+        onClick={() => { if (!isSelected) onSelect(); selectNode(isSelected ? null : node.id); }}
+      >
+        <button
+          className={`w-4 h-4 flex items-center justify-center shrink-0 transition-transform ${
+            isSelected ? 'text-white/70' : 'text-[#6b7280]'
+          } ${hasChildren ? 'hover:text-white' : 'opacity-0 pointer-events-none'}`}
+          onClick={(e) => { e.stopPropagation(); if (hasChildren) toggleExpand(node.id); }}
+        >
+          <ChevronRight
+            className={`w-3 h-3 transition-transform duration-150 ${isExpanded && hasChildren ? 'rotate-90' : ''}`}
+          />
+        </button>
+        <span className={`shrink-0 mr-1.5 ${isSelected ? 'text-white/80' : 'text-[#8b8b99]'}`}>
+          {icon}
+        </span>
+        <span className="truncate text-[11px] font-medium flex-1 min-w-0">
+          {node.text?.split('\n')[0] || node.type}
+        </span>
+        <span className={`shrink-0 text-[9px] font-mono ml-2 ${isSelected ? 'text-white/50' : 'text-[#6b7280]'}`}>
+          {node.type}
+        </span>
+      </div>
+      {hasChildren && isExpanded && node.children.map((child) => (
+        <WireframeLayerRow
+          key={child.id}
+          node={child}
+          depth={depth + 1}
+          expandedIds={expandedIds}
+          toggleExpand={toggleExpand}
+          onSelect={onSelect}
+        />
+      ))}
+    </>
+  );
+}
+
+function FigmaLayersPanel({ pageId, isCodeMode, onSelect }: { pageId: string; isCodeMode: boolean; onSelect: () => void }) {
+  const page = useCurrentPage();
+  const codeNodes = useEditorStore((s) => s.codeNodes);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  if (!page) return null;
+
+  const nodes = isCodeMode ? codeNodes : page.children;
+  const count = nodes.length;
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden bg-[#1c1c1f]">
+      {/* Header bar */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 shrink-0">
+        <span className="text-[10px] font-semibold text-[#9999aa] uppercase tracking-widest">Layers</span>
+        <span className="text-[9px] text-[#666677] bg-white/5 px-1.5 py-0.5 rounded">{count}</span>
+      </div>
+
+      {/* Page / frame row */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5 shrink-0">
+        <LayoutDashboard className="w-3 h-3 text-[#9999aa] shrink-0" />
+        <span className="text-[11px] text-[#e0e0e8] font-medium truncate">{page.name || 'Page'}</span>
+        <span className="ml-auto text-[9px] text-[#555566] font-mono">{page.width}×{page.height}</span>
+      </div>
+
+      {/* Tree */}
+      <div className="flex-1 overflow-y-auto py-1 px-1">
+        {nodes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Hash className="w-6 h-6 text-[#444455] mb-2" />
+            <p className="text-[10px] text-[#555566]">
+              {isCodeMode ? 'No elements yet — generate a design first' : 'No layers yet'}
+            </p>
+          </div>
+        ) : isCodeMode ? (
+          (nodes as CodeNode[]).map((node) => (
+            <CodeLayerRow
+              key={node.id}
+              node={node}
+              depth={0}
+              pageId={pageId}
+              expandedIds={expandedIds}
+              toggleExpand={toggleExpand}
+              onSelect={onSelect}
+            />
+          ))
+        ) : (
+          (nodes as WireframeNode[]).map((node) => (
+            <WireframeLayerRow
+              key={node.id}
+              node={node}
+              depth={0}
+              expandedIds={expandedIds}
+              toggleExpand={toggleExpand}
+              onSelect={onSelect}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Layer type icons ──────────────────────────────────────
-const TYPE_ICONS: Record<NodeType, React.ReactNode> = {
+const TYPE_ICONS_MAP: Record<NodeType, React.ReactNode> = {
   container: <Square className="w-3.5 h-3.5" />,
   sidebar: <PanelLeft className="w-3.5 h-3.5" />,
   navbar: <Navigation className="w-3.5 h-3.5" />,
@@ -48,41 +296,6 @@ const TYPE_ICONS: Record<NodeType, React.ReactNode> = {
   "image-placeholder": <Image className="w-3.5 h-3.5" />,
 };
 
-// ── Layer item (recursive) ────────────────────────────────
-function LayerItem({
-  node,
-  depth = 0,
-}: {
-  node: WireframeNode;
-  depth?: number;
-}) {
-  const { selectedNodeId, selectNode } = useEditorStore();
-  const isSelected = selectedNodeId === node.id;
-
-  return (
-    <>
-      <button
-        className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
-          isSelected
-            ? "bg-[#589df6]/20 text-[#589df6]"
-            : "text-[var(--text-secondary)] hover:bg-slate-100 hover:text-[var(--text-primary)]"
-        }`}
-        style={{ paddingLeft: `${12 + depth * 16}px` }}
-        onClick={() => selectNode(node.id)}
-      >
-        <span className="flex-shrink-0 opacity-60">
-          {TYPE_ICONS[node.type] || <Square className="w-3.5 h-3.5" />}
-        </span>
-        <span className="truncate">
-          {node.text?.split("\n")[0] || node.type}
-        </span>
-      </button>
-      {node.children.map((child) => (
-        <LayerItem key={child.id} node={child} depth={depth + 1} />
-      ))}
-    </>
-  );
-}
 
 // ── Section header ────────────────────────────────────────
 function SectionHeader({
@@ -174,9 +387,7 @@ function CodeElementEditor({ pageId }: { pageId: string }) {
           <Square className="w-5 h-5 text-[var(--text-muted)]" />
         </div>
         <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-          Click any element in the canvas
-          <br />
-          to inspect and edit it.
+          Click any element in the canvas<br />or select a layer to edit it.
         </p>
       </div>
     );
@@ -189,124 +400,29 @@ function CodeElementEditor({ pageId }: { pageId: string }) {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      {/* Element info */}
-      <div className="px-4 py-3 border-b border-[var(--border)]">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
+      {/* Element identity */}
+      <div className="px-4 py-3 border-b border-[var(--border)] bg-[var(--bg-elevated)]">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[10px] font-mono bg-[#589df6]/10 text-[#589df6] px-1.5 py-0.5 rounded border border-[#589df6]/20">
             &lt;{info.tagName}&gt;
           </span>
-          <span className="text-[11px] font-medium text-[#589df6] truncate">
+          <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
             #{selectedElementId}
           </span>
         </div>
-        <p className="text-[10px] text-[var(--text-muted)] mt-1">
+        <p className="text-[10px] text-[var(--text-muted)]">
           {Math.round(info.styles.width)} × {Math.round(info.styles.height)} px
         </p>
       </div>
 
-      <SectionHeader title="Background" />
-      <div className="px-4 pb-3 flex items-center gap-3">
-        <input
-          type="color"
-          className="w-8 h-8 rounded border border-[var(--border)] cursor-pointer p-0.5 bg-[var(--bg-elevated)]"
-          value={cssColorToHex(bgColor)}
-          onChange={(e) => {
-            notifyIframe({ backgroundColor: e.target.value });
-            update({ backgroundColor: e.target.value });
-          }}
-        />
-        <input
-          type="text"
-          className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6] font-mono"
-          value={overrides.backgroundColor ?? ''}
-          placeholder={bgColor}
-          onChange={(e) => {
-            notifyIframe({ backgroundColor: e.target.value });
-            update({ backgroundColor: e.target.value });
-          }}
-        />
-      </div>
-
-      <Divider />
-      <SectionHeader title="Text color" />
-      <div className="px-4 pb-3 flex items-center gap-3">
-        <input
-          type="color"
-          className="w-8 h-8 rounded border border-[var(--border)] cursor-pointer p-0.5 bg-[var(--bg-elevated)]"
-          value={cssColorToHex(textColor)}
-          onChange={(e) => {
-            notifyIframe({ color: e.target.value });
-            update({ color: e.target.value });
-          }}
-        />
-        <input
-          type="text"
-          className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6] font-mono"
-          value={overrides.color ?? ''}
-          placeholder={textColor}
-          onChange={(e) => {
-            notifyIframe({ color: e.target.value });
-            update({ color: e.target.value });
-          }}
-        />
-      </div>
-
-      <Divider />
-      <SectionHeader title="Typography" />
-      <div className="px-4 pb-3 space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-[var(--text-muted)] w-12">Size</span>
-          <input
-            type="text"
-            className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6]"
-            value={overrides.fontSize ?? ''}
-            placeholder={fontSize}
-            onChange={(e) => {
-              notifyIframe({ fontSize: e.target.value });
-              update({ fontSize: e.target.value });
-            }}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-[var(--text-muted)] w-12">Weight</span>
-          <select
-            className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6]"
-            value={overrides.fontWeight ?? info.styles.fontWeight}
-            onChange={(e) => {
-              notifyIframe({ fontWeight: e.target.value });
-              update({ fontWeight: e.target.value });
-            }}
-          >
-            {['100','200','300','400','500','600','700','800','900'].map((w) => (
-              <option key={w} value={w}>{w}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <Divider />
-      <SectionHeader title="Border radius" />
-      <div className="px-4 pb-3">
-        <input
-          type="text"
-          className="w-full bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6]"
-          value={overrides.borderRadius ?? ''}
-          placeholder={borderRadius || '0px'}
-          onChange={(e) => {
-            notifyIframe({ borderRadius: e.target.value });
-            update({ borderRadius: e.target.value });
-          }}
-        />
-      </div>
-
-      {info.textContent && (
+      {/* ── Text content ── show first if element has text */}
+      {(info.textContent || overrides.textContent !== undefined) && (
         <>
-          <Divider />
-          <SectionHeader title="Text content" />
+          <SectionHeader title="Content" />
           <div className="px-4 pb-3">
             <textarea
               className="w-full bg-[var(--bg-elevated)] border border-[var(--border)] rounded-md px-3 py-2 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6] resize-none"
-              rows={3}
+              rows={2}
               value={overrides.textContent ?? info.textContent}
               onChange={(e) => {
                 notifyText(e.target.value);
@@ -314,8 +430,130 @@ function CodeElementEditor({ pageId }: { pageId: string }) {
               }}
             />
           </div>
+          <Divider />
         </>
       )}
+
+      {/* ── Fill / Background ── */}
+      <SectionHeader title="Fill" />
+      <div className="px-4 pb-3 flex items-center gap-3">
+        <input
+          type="color"
+          className="w-8 h-8 rounded border border-[var(--border)] cursor-pointer p-0.5 bg-[var(--bg-elevated)] shrink-0"
+          value={cssColorToHex(bgColor)}
+          onChange={(e) => { notifyIframe({ backgroundColor: e.target.value }); update({ backgroundColor: e.target.value }); }}
+        />
+        <input
+          type="text"
+          className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6] font-mono"
+          value={overrides.backgroundColor ?? ''}
+          placeholder={bgColor}
+          onChange={(e) => { notifyIframe({ backgroundColor: e.target.value }); update({ backgroundColor: e.target.value }); }}
+        />
+      </div>
+
+      <Divider />
+
+      {/* ── Typography ── */}
+      <SectionHeader title="Typography" />
+      <div className="px-4 pb-3 space-y-2">
+        {/* Text color */}
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            className="w-6 h-6 rounded border border-[var(--border)] cursor-pointer p-0 bg-[var(--bg-elevated)] shrink-0"
+            value={cssColorToHex(textColor)}
+            onChange={(e) => { notifyIframe({ color: e.target.value }); update({ color: e.target.value }); }}
+          />
+          <span className="text-[10px] text-[var(--text-muted)] w-8 shrink-0">Color</span>
+          <input
+            type="text"
+            className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6] font-mono"
+            value={overrides.color ?? ''}
+            placeholder={textColor}
+            onChange={(e) => { notifyIframe({ color: e.target.value }); update({ color: e.target.value }); }}
+          />
+        </div>
+        {/* Font size */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-[var(--text-muted)] w-8 shrink-0 ml-8">Size</span>
+          <input
+            type="text"
+            className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6]"
+            value={overrides.fontSize ?? ''}
+            placeholder={fontSize || '14px'}
+            onChange={(e) => { notifyIframe({ fontSize: e.target.value }); update({ fontSize: e.target.value }); }}
+          />
+        </div>
+        {/* Font weight */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-[var(--text-muted)] w-8 shrink-0 ml-8">Weight</span>
+          <select
+            className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6]"
+            value={overrides.fontWeight ?? info.styles.fontWeight}
+            onChange={(e) => { notifyIframe({ fontWeight: e.target.value }); update({ fontWeight: e.target.value }); }}
+          >
+            {[['100','Thin'],['200','Extra Light'],['300','Light'],['400','Regular'],['500','Medium'],['600','Semi Bold'],['700','Bold'],['800','Extra Bold'],['900','Black']].map(([v, l]) => (
+              <option key={v} value={v}>{l} ({v})</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <Divider />
+
+      {/* ── Size ── */}
+      <SectionHeader title="Size" />
+      <div className="px-4 pb-3 grid grid-cols-2 gap-2">
+        <div className="flex items-center gap-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5">
+          <span className="text-[10px] text-[var(--text-muted)] font-medium w-4 shrink-0">W</span>
+          <input
+            type="text"
+            className="flex-1 bg-transparent text-[11px] text-[var(--text-primary)] outline-none w-0 min-w-0"
+            value={overrides.width ?? ''}
+            placeholder={`${Math.round(info.styles.width)}px`}
+            onChange={(e) => { notifyIframe({ width: e.target.value }); update({ width: e.target.value }); }}
+          />
+        </div>
+        <div className="flex items-center gap-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5">
+          <span className="text-[10px] text-[var(--text-muted)] font-medium w-4 shrink-0">H</span>
+          <input
+            type="text"
+            className="flex-1 bg-transparent text-[11px] text-[var(--text-primary)] outline-none w-0 min-w-0"
+            value={overrides.height ?? ''}
+            placeholder={`${Math.round(info.styles.height)}px`}
+            onChange={(e) => { notifyIframe({ height: e.target.value }); update({ height: e.target.value }); }}
+          />
+        </div>
+      </div>
+
+      <Divider />
+
+      {/* ── Padding ── */}
+      <SectionHeader title="Padding" />
+      <div className="px-4 pb-3">
+        <input
+          type="text"
+          className="w-full bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6]"
+          value={overrides.padding ?? ''}
+          placeholder="e.g. 8px 16px"
+          onChange={(e) => { notifyIframe({ padding: e.target.value }); update({ padding: e.target.value }); }}
+        />
+      </div>
+
+      <Divider />
+
+      {/* ── Border radius ── */}
+      <SectionHeader title="Corner radius" />
+      <div className="px-4 pb-3">
+        <input
+          type="text"
+          className="w-full bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none focus:border-[#589df6]"
+          value={overrides.borderRadius ?? ''}
+          placeholder={borderRadius || '0px'}
+          onChange={(e) => { notifyIframe({ borderRadius: e.target.value }); update({ borderRadius: e.target.value }); }}
+        />
+      </div>
     </div>
   );
 }
@@ -424,23 +662,7 @@ export default function PropertiesPanel() {
 
       {/* Tab content */}
       {activeTab === "layers" ? (
-        <div className="flex-1 overflow-y-auto py-1">
-          {page && (
-            <>
-              <div className="flex items-center justify-between px-3 py-2">
-                <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider font-medium">
-                  Layers
-                </span>
-                <span className="text-[10px] text-[var(--text-muted)] bg-slate-100 px-1.5 py-0.5 rounded">
-                  {page.children.length}
-                </span>
-              </div>
-              {page.children.map((node) => (
-                <LayerItem key={node.id} node={node} />
-              ))}
-            </>
-          )}
-        </div>
+        page ? <FigmaLayersPanel pageId={page.id} isCodeMode={isCodeMode} onSelect={() => setActiveTab('design')} /> : null
       ) : activeTab === "interaction" ? (
         <div className="flex-1 overflow-y-auto p-4">
           <SectionHeader title="Link" actionIcon={<Plus className="w-3.5 h-3.5" />} />

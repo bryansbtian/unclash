@@ -16,6 +16,7 @@ function applyOverridesToCode(
     if (o.height) styleEntries.push(`height: '${o.height}'`);
     if (o.padding) styleEntries.push(`padding: '${o.padding}'`);
 
+    if (o.transform) styleEntries.push(`transform: '${o.transform}'`);
     if (styleEntries.length === 0 && !o.textContent) continue;
 
     const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
