@@ -59,19 +59,26 @@ export async function extractAllRegionChildren(
   const start = Date.now();
 
   try {
-    const results = await Promise.all(
-      regions.map((region) =>
-        extractRegionChildren(imageDataUrl, region, model).catch(
-          (err) => {
-            console.warn(
-              `[Stage B] Failed for region "${region.id}":`,
-              err instanceof Error ? err.message : err,
-            );
-            return { regionId: region.id, children: [] } as StageBOutput;
-          },
+    // Run region extractions with limited concurrency to avoid rate limit bursts.
+    const CONCURRENCY = 2;
+    const results: StageBOutput[] = [];
+    for (let i = 0; i < regions.length; i += CONCURRENCY) {
+      const batch = regions.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(
+        batch.map((region) =>
+          extractRegionChildren(imageDataUrl, region, model).catch(
+            (err) => {
+              console.warn(
+                `[Stage B] Failed for region "${region.id}":`,
+                err instanceof Error ? err.message : err,
+              );
+              return { regionId: region.id, children: [] } as StageBOutput;
+            },
+          ),
         ),
-      ),
-    );
+      );
+      results.push(...batchResults);
+    }
 
     const totalChildren = results.reduce(
       (sum, r) => sum + countChildren(r.children),

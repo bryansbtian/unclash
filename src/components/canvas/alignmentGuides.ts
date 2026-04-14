@@ -12,7 +12,7 @@ export interface SnapResult {
   guides: AlignmentGuide[];
 }
 
-const SNAP_THRESHOLD = 5; // px – distance within which to snap
+const SNAP_THRESHOLD = 8; // px – distance within which to snap
 
 // ── Compute snap positions from sibling nodes ─────────────
 

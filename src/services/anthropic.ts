@@ -209,32 +209,51 @@ export async function generateText({
 }
 
 async function createMessage(body: Record<string, unknown>): Promise<AnthropicMessageResponse> {
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'anthropic-version': ANTHROPIC_VERSION,
-      'x-api-key': getAnthropicApiKey(),
-    },
-    body: JSON.stringify(body),
-    cache: 'no-store',
-  });
+  const MAX_RETRIES = 4;
+  const BASE_DELAY_MS = 8000;
 
-  const json = (await response.json().catch(() => null)) as AnthropicMessageResponse | AnthropicErrorResponse | null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const response = await fetch(ANTHROPIC_API_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'anthropic-version': ANTHROPIC_VERSION,
+        'x-api-key': getAnthropicApiKey(),
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+    });
 
-  if (!response.ok) {
-    const message =
-      json &&
-      typeof json === 'object' &&
-      'error' in json &&
-      typeof json.error?.message === 'string'
-        ? json.error.message
-        : `Anthropic request failed with status ${response.status}`;
+    const json = (await response.json().catch(() => null)) as AnthropicMessageResponse | AnthropicErrorResponse | null;
 
-    throw new Error(message);
+    if (response.status === 429 && attempt < MAX_RETRIES) {
+      const retryAfterHeader = response.headers.get('retry-after');
+      const retryAfterMs = retryAfterHeader
+        ? parseFloat(retryAfterHeader) * 1000
+        : BASE_DELAY_MS * Math.pow(2, attempt);
+      const jitter = Math.random() * 2000;
+      const delay = Math.min(retryAfterMs + jitter, 60000);
+      console.warn(`[Anthropic] Rate limited. Retrying in ${Math.round(delay / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      continue;
+    }
+
+    if (!response.ok) {
+      const message =
+        json &&
+        typeof json === 'object' &&
+        'error' in json &&
+        typeof json.error?.message === 'string'
+          ? json.error.message
+          : `Anthropic request failed with status ${response.status}`;
+
+      throw new Error(message);
+    }
+
+    return json as AnthropicMessageResponse;
   }
 
-  return json as AnthropicMessageResponse;
+  throw new Error('Anthropic request failed after maximum retries due to rate limiting');
 }
 
 function extractTextFromResponse(content: AnthropicResponseBlock[]): string {

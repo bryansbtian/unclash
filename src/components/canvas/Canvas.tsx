@@ -6,7 +6,7 @@ import { useEditorStore } from '@/store/editorStore';
 import { Page, WireframeNode } from '@/types/schema';
 import WireframeBlock from './WireframeBlock';
 import CodeFrame from './CodeFrame';
-import { Play, Plus } from 'lucide-react';
+import { Play, X } from 'lucide-react';
 
 /** Flatten a node tree into a depth-ordered array for rendering. */
 function flattenForRender(nodes: WireframeNode[], depth = 0): Array<{ node: WireframeNode; depth: number }> {
@@ -173,7 +173,7 @@ export default function Canvas() {
   const {
     pages, currentPageId, activeTool,
     setCurrentPage, setActiveTool, addPage, addPageAfter,
-    updatePage, selectNode, alignmentGuides,
+    updatePage, selectNode, alignmentGuides, removePage, setSelectedElement,
   } = store;
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -193,6 +193,111 @@ export default function Canvas() {
 
   useEffect(() => { drawDraftRef.current = drawDraft; }, [drawDraft]);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const ARROW_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+    let commitTimer: ReturnType<typeof setTimeout> | null = null;
+    let hasPendingMove = false;
+
+    // Flush any silent arrow-key moves to history immediately
+    const flushMove = () => {
+      if (commitTimer) { clearTimeout(commitTimer); commitTimer = null; }
+      if (hasPendingMove) {
+        useEditorStore.getState().commitToHistory();
+        hasPendingMove = false;
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Skip if user is actively typing in an input / textarea / contentEditable
+      const active = document.activeElement as HTMLElement | null;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+
+      // Escape → deselect
+      if (e.key === 'Escape') {
+        flushMove();
+        selectNode(null);
+        setSelectedElement(null);
+        return;
+      }
+
+      const ctrl = e.ctrlKey || e.metaKey;
+
+      // Ctrl+Z → undo
+      if (ctrl && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        flushMove(); // commit any pending silent move first
+        useEditorStore.getState().undo();
+        return;
+      }
+      // Ctrl+Y / Ctrl+Shift+Z → redo
+      if (ctrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        flushMove();
+        useEditorStore.getState().redo();
+        return;
+      }
+
+      // Ctrl+C → copy selected node
+      if (ctrl && e.key === 'c') {
+        const { selectedNodeId, copyNode } = useEditorStore.getState();
+        if (selectedNodeId) { e.preventDefault(); copyNode(selectedNodeId); }
+        return;
+      }
+      // Ctrl+V → paste
+      if (ctrl && e.key === 'v') {
+        const { clipboard, pasteNode } = useEditorStore.getState();
+        if (clipboard) { e.preventDefault(); pasteNode(); }
+        return;
+      }
+      // Ctrl+D → duplicate
+      if (ctrl && e.key === 'd') {
+        const { selectedNodeId, duplicateNode } = useEditorStore.getState();
+        if (selectedNodeId) { e.preventDefault(); duplicateNode(selectedNodeId); }
+        return;
+      }
+
+      // Backspace / Delete → delete selected node
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        const { selectedNodeId, deleteNode } = useEditorStore.getState();
+        if (selectedNodeId) { e.preventDefault(); deleteNode(selectedNodeId); }
+        return;
+      }
+
+      // Arrow keys → nudge selected node
+      if (!ARROW_KEYS.has(e.key)) return;
+      const { selectedNodeId, getSelectedNode, updateNodeSilent } = useEditorStore.getState();
+      if (!selectedNodeId) return;
+      const node = getSelectedNode();
+      if (!node) return;
+
+      e.preventDefault(); // prevent canvas scroll
+      const step = e.shiftKey ? 10 : 1;
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+
+      updateNodeSilent(selectedNodeId, {
+        x: Math.max(0, node.x + dx),
+        y: Math.max(0, node.y + dy),
+      });
+      hasPendingMove = true;
+
+      // Debounce: holding key = one undo step; releasing = commit
+      if (commitTimer) clearTimeout(commitTimer);
+      commitTimer = setTimeout(() => {
+        useEditorStore.getState().commitToHistory();
+        hasPendingMove = false;
+        commitTimer = null;
+      }, 400);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      if (commitTimer) clearTimeout(commitTimer);
+    };
+  }, [selectNode, setSelectedElement]);
 
   // Auto-center viewport on first render
   useEffect(() => {
@@ -496,8 +601,11 @@ export default function Canvas() {
   }, [activeTool, getCanvasPoint, addPage, updatePage, selectNode, setActiveTool]);
 
   const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) selectNode(null);
-  }, [selectNode]);
+    // Deselect when clicking on any canvas background area.
+    // Artboards and wireframe blocks call e.stopPropagation() so they won't trigger this.
+    selectNode(null);
+    setSelectedElement(null);
+  }, [selectNode, setSelectedElement]);
 
   if (!pages.length) return null;
 
@@ -561,11 +669,11 @@ export default function Canvas() {
                       className="flex-1 mx-2 bg-transparent text-center text-[11px] font-medium text-(--text-primary) outline-none focus:ring-0 border-none min-w-0"
                     />
                     <button
-                      onClick={(e) => { e.stopPropagation(); addPageAfter(page.id); }}
-                      className="p-1 rounded text-(--text-muted) hover:bg-slate-100 hover:text-(--text-primary) transition-colors"
-                      title="Add page"
+                      onClick={(e) => { e.stopPropagation(); removePage(page.id); }}
+                      className="p-1 rounded text-(--text-muted) hover:bg-slate-100 hover:text-red-500 transition-colors"
+                      title="Delete page"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
@@ -577,13 +685,13 @@ export default function Canvas() {
                     } ${activeTool === 'hand' ? 'cursor-grab' : isDrawTool(activeTool) ? 'cursor-crosshair' : 'cursor-default'}`}
                     style={{ width: page.width, height: page.height, background: '#ffffff', boxShadow: '0 8px 60px rgba(0,0,0,0.25), 0 2px 12px rgba(0,0,0,0.12)' }}
                     onMouseDown={(e) => handleArtboardMouseDown(e, page)}
-                    onClick={(e) => { e.stopPropagation(); setCurrentPage(page.id); }}
+                    onClick={(e) => { e.stopPropagation(); setCurrentPage(page.id); selectNode(null); }}
                   >
                     {page.code ? (
                       <CodeFrame page={page} />
                     ) : (
                       flattenForRender(page.children).map(({ node: flatNode, depth }) => (
-                        <WireframeBlock key={flatNode.id} node={flatNode} pageId={page.id} depth={depth} onSelectInPage={() => setCurrentPage(page.id)} />
+                        <WireframeBlock key={flatNode.id} node={flatNode} pageId={page.id} depth={depth} zoom={zoom} onSelectInPage={() => setCurrentPage(page.id)} />
                       ))
                     )}
 
@@ -612,8 +720,8 @@ export default function Canvas() {
                           style={{
                             position: 'absolute',
                             ...(guide.axis === 'x'
-                              ? { left: guide.position, top: 0, width: 0, height: '100%', borderLeft: '1px solid #ef4444' }
-                              : { top: guide.position, left: 0, height: 0, width: '100%', borderTop: '1px solid #ef4444' }),
+                              ? { left: guide.position, top: 0, width: '1px', height: '100%', background: '#ef4444' }
+                              : { top: guide.position, left: 0, height: '1px', width: '100%', background: '#ef4444' }),
                             zIndex: 100,
                           }}
                         />

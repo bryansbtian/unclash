@@ -188,6 +188,13 @@ const SELECTION_RUNTIME = `
       }
     }, { passive: false });
 
+    // Forward Escape to parent so canvas can deselect even when iframe has focus
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        window.parent.postMessage({ __unclash: true, type: 'escape' }, '*');
+      }
+    });
+
     // Double-click → inline text editing
     var _editingEl = null;
     document.addEventListener('dblclick', function(e) {
@@ -306,7 +313,7 @@ ${ops}
 <\/script>`;
 }
 
-function buildSrcdoc(code: string, overrides: Record<string, ElementOverride>): string {
+function buildSrcdoc(code: string, overrides: Record<string, ElementOverride>, viewportWidth: number): string {
   const overrideCss = buildOverrideStyles(overrides);
   const overrideJs = buildTextOverrideScript(overrides);
   const safeCode = code.replace(/<\/script/gi, '<\\/script');
@@ -315,10 +322,12 @@ function buildSrcdoc(code: string, overrides: Record<string, ElementOverride>): 
 <html>
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=${viewportWidth}, initial-scale=1" />
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html, body, #root { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    #root > * { width: 100% !important; max-width: 100% !important; margin-left: 0 !important; margin-right: 0 !important; box-sizing: border-box !important; }
+    #root > * > * { max-width: 100% !important; margin-left: 0 !important; margin-right: 0 !important; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
     button, input, textarea, select { font-family: inherit; }
     [data-unclash-id] { cursor: pointer; }
@@ -474,10 +483,17 @@ export default function CodeFrame({ page }: Props) {
   const srcdoc = useMemo(
     () => {
       setRenderError(null);
-      return buildSrcdoc(page.code ?? '', page.elementOverrides ?? {});
+      // Strip repair artifacts baked in by an old buggy repairTruncatedCode.
+      // Those artifacts look like: \n    </div>  \n  )  \n} at the very end,
+      // where ) has NO semicolon (valid code always ends with ");").
+      const cleanCode = (page.code ?? '').replace(
+        /(\n[ \t]*<\/div>[ \t]*)(\n[ \t]*\)[ \t]*)+((\n[ \t]*\}[ \t]*)+)?$/,
+        '',
+      );
+      return buildSrcdoc(cleanCode, page.elementOverrides ?? {}, page.width);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [page.code, page.elementOverrides],
+    [page.code, page.elementOverrides, page.width],
   );
 
   // Listen for postMessages from this specific iframe
@@ -521,6 +537,11 @@ export default function CodeFrame({ page }: Props) {
 
       if (msg.type === 'wheel') {
         window.dispatchEvent(new CustomEvent('canvas:iframe-wheel', { detail: { deltaY: msg.deltaY } }));
+      }
+
+      if (msg.type === 'escape') {
+        setSelectedElement(null);
+        setSelectedRect(null);
       }
 
       if (msg.type === 'text-edited' && msg.id && currentPageId) {

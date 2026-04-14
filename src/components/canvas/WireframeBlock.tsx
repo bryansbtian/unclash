@@ -173,6 +173,7 @@ interface Props {
   node: WireframeNode;
   pageId?: string;
   depth?: number;
+  zoom?: number;
   onSelectInPage?: () => void;
 }
 
@@ -180,13 +181,13 @@ export default function WireframeBlock({
   node,
   pageId,
   depth = 0,
+  zoom = 1,
   onSelectInPage,
 }: Props) {
-  void pageId;
-
   const page = useCurrentPage();
   const {
     selectedNodeId,
+    selectedPageId,
     activeTool,
     selectNode,
     updateNode,
@@ -196,7 +197,9 @@ export default function WireframeBlock({
     setAlignmentGuides,
   } = useEditorStore();
 
-  const isSelected = selectedNodeId === node.id;
+  // A node is selected only if its ID AND its page both match.
+  // selectedPageId is set alongside selectedNodeId so this is always consistent.
+  const isSelected = selectedNodeId === node.id && selectedPageId === pageId;
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(node.text || "");
   const blockRef = useRef<HTMLDivElement>(null);
@@ -237,8 +240,13 @@ export default function WireframeBlock({
       if (isEditing) return;
       if (activeTool === "hand") return;
       e.stopPropagation();
+      // Blur any focused input so arrow keys reach the canvas immediately
+      const active = document.activeElement as HTMLElement | null;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+        active.blur();
+      }
       onSelectInPage?.();
-      selectNode(node.id);
+      selectNode(node.id, pageId);
       if (activeTool !== "move") return;
 
       dragState.current = {
@@ -254,8 +262,8 @@ export default function WireframeBlock({
 
       const handleMouseMove = (ev: MouseEvent) => {
         if (!dragState.current) return;
-        const dx = ev.clientX - dragState.current.startX;
-        const dy = ev.clientY - dragState.current.startY;
+        const dx = (ev.clientX - dragState.current.startX) / zoom;
+        const dy = (ev.clientY - dragState.current.startY) / zoom;
         const rawX = snapToGrid(dragState.current.nodeX + dx);
         const rawY = snapToGrid(dragState.current.nodeY + dy);
 
@@ -302,6 +310,7 @@ export default function WireframeBlock({
       selectNode,
       setAlignmentGuides,
       updateNodeSilent,
+      zoom,
     ],
   );
 
@@ -322,8 +331,8 @@ export default function WireframeBlock({
       const handleMouseMove = (ev: MouseEvent) => {
         if (!resizeState.current) return;
 
-        const dx = ev.clientX - resizeState.current.startX;
-        const dy = ev.clientY - resizeState.current.startY;
+        const dx = (ev.clientX - resizeState.current.startX) / zoom;
+        const dy = (ev.clientY - resizeState.current.startY) / zoom;
         const h = resizeState.current.handle;
         let newW = resizeState.current.nodeW;
         let newH = resizeState.current.nodeH;
@@ -364,7 +373,7 @@ export default function WireframeBlock({
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
     },
-    [commitToHistory, node.height, node.id, node.width, node.x, node.y, updateNodeSilent],
+    [commitToHistory, node.height, node.id, node.width, node.x, node.y, updateNodeSilent, zoom],
   );
 
   const handleDoubleClick = useCallback(
@@ -942,7 +951,7 @@ export default function WireframeBlock({
       onClick={(e) => {
         e.stopPropagation();
         onSelectInPage?.();
-        selectNode(node.id);
+        selectNode(node.id, pageId);
       }}
     >
       {showTypeBadge && (

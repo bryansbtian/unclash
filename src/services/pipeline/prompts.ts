@@ -257,7 +257,7 @@ REQUIREMENTS:
    b. For each one, identify what it represents and use the closest matching lucide-react component (available as the global \`lucide\` object). Destructure all needed icons at the top of the function: \`const { Search, Bell, Settings, ChevronRight, User } = lucide;\`
    c. NEVER use emoji characters, unicode symbols (→ ✓ ☰ ⚙), or plain text as a substitute for UI icons. Emoji are only allowed when the screenshot itself literally displays an emoji as text content (e.g. a label that reads "🎉 Congrats").
    d. If you cannot identify the exact icon, pick the closest semantic match from lucide-react — do not fall back to emoji.
-10. The root element must use \`style={{ width: '100%', height: '100%' }}\` to fill the artboard.
+10. The root element must use \`style={{ width: '100%', height: '100%' }}\` to fill the artboard. NEVER add maxWidth, horizontal margin (margin: 'auto', marginLeft: 'auto', etc.), or centering to the outermost container — the artboard is already the exact device size, so content must fill it edge-to-edge with no side gaps.
 
 LAYOUT RULES:
 - Use flexbox and grid via inline styles (e.g. \`style={{ display: 'flex', flexDirection: 'row', gap: 16 }}\`).

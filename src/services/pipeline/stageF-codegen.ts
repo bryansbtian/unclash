@@ -58,22 +58,16 @@ function repairTruncatedCode(code: string): string {
     }
   }
 
-  // If we're inside an unclosed JSX return (...), close the root JSX element
-  // and the paren(s) before closing braces.
-  if (parenDepth > 0) {
-    trimmed += '\n    </div>';
-    trimmed += '\n  )'.repeat(parenDepth);
-    // Re-tally brace/paren counts for the appended text
-    for (const ch of `\n    </div>\n  )`.repeat(parenDepth)) {
-      if (ch === '(') parenDepth--;      // closing parens reduce depth
-      else if (ch === ')') parenDepth--; // already accounted for above
-      else if (ch === '{') braceDepth++;
-      else if (ch === '}') braceDepth--;
-    }
-  }
-
-  // Close all open braces (function body / object literals)
+  // Only repair if the function body is still open (braceDepth > 0).
+  // If braceDepth <= 0 the closing } was already written — appending </div>
+  // outside a closed function produces an "Unexpected token" parse error.
   if (braceDepth > 0) {
+    // Inside an unclosed return (...) block — close the root JSX element first.
+    if (parenDepth > 0) {
+      trimmed += '\n    </div>';
+      trimmed += '\n  )'.repeat(parenDepth);
+    }
+    // Close all open braces (function body / object literals).
     trimmed += '\n' + '}'.repeat(braceDepth);
   }
 

@@ -28,11 +28,13 @@ export default function Toolbar() {
     setExportOpen,
     undo,
     redo,
-    canUndo,
-    canRedo,
     copyNode,
     pasteNode,
   } = useEditorStore();
+
+  // Subscribe directly so buttons re-render when history changes
+  const historyIndex = useEditorStore(s => s.historyIndex);
+  const historyLength = useEditorStore(s => s.history.length);
 
   return (
     <div className="h-12 bg-white border-b border-[var(--border)] flex items-center px-3 gap-2 shrink-0">
@@ -58,7 +60,7 @@ export default function Toolbar() {
       <div className="flex items-center gap-0.5 ml-1">
         <button
           onClick={undo}
-          disabled={!canUndo()}
+          disabled={historyIndex <= 0}
           className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-slate-100 hover:text-[var(--text-primary)] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
           title="Undo (Ctrl+Z)"
         >
@@ -66,7 +68,7 @@ export default function Toolbar() {
         </button>
         <button
           onClick={redo}
-          disabled={!canRedo()}
+          disabled={historyIndex >= historyLength - 1}
           className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-slate-100 hover:text-[var(--text-primary)] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
           title="Redo (Ctrl+Y)"
         >

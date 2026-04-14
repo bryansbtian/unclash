@@ -14,6 +14,7 @@ interface EditorState {
 
   // Editor state
   selectedNodeId: string | null;
+  selectedPageId: string | null;
   isExportOpen: boolean;
   activeTool:
     | "move"
@@ -65,7 +66,7 @@ interface EditorState {
   updatePage: (pageId: string, updates: Partial<Page>) => void;
   setProjectName: (name: string) => void;
   setOriginalScreenshot: (url: string | null) => void;
-  selectNode: (id: string | null) => void;
+  selectNode: (id: string | null, pageId?: string | null) => void;
   setExportOpen: (open: boolean) => void;
   setActiveTool: (tool: EditorState["activeTool"]) => void;
   setAlignmentGuides: (guides: AlignmentGuide[]) => void;
@@ -195,6 +196,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   projectName: "Untitled Project",
   originalScreenshot: null,
   selectedNodeId: null,
+  selectedPageId: null,
   isExportOpen: false,
   activeTool: "move",
   history: [],
@@ -249,6 +251,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       currentPageId: pageId,
       selectedNodeId: null,
+      selectedPageId: null,
       history: [JSON.parse(JSON.stringify(page))],
       historyIndex: 0,
     });
@@ -363,7 +366,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setProjectName: (name) => set({ projectName: name }),
   setOriginalScreenshot: (url) => set({ originalScreenshot: url }),
-  selectNode: (id) => set({ selectedNodeId: id }),
+  selectNode: (id, pageId) => set({ selectedNodeId: id, selectedPageId: pageId ?? null }),
   setExportOpen: (open) => set({ isExportOpen: open }),
   setActiveTool: (tool) => set({ activeTool: tool }),
   setAlignmentGuides: (guides) => set({ alignmentGuides: guides }),
