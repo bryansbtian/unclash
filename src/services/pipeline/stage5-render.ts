@@ -1,5 +1,5 @@
 /**
- * Stage E: Wireframe Rendering
+ * Stage 5: Wireframe Rendering
  *
  * Converts the ValidatedUISchema into the editor's Page format.
  * Maps the expanded UINodeType to the editor's simpler NodeType.
@@ -284,7 +284,7 @@ export function renderToPage(
     };
 
     console.log(
-      `[Stage E] Rendered Page (${validated.pageWidth}x${validated.pageHeight}): ${children.length} top-level blocks in ${Date.now() - start}ms`,
+      `[Stage 5] Rendered Page (${validated.pageWidth}x${validated.pageHeight}): ${children.length} top-level blocks in ${Date.now() - start}ms`,
     );
 
     function logTree(nodes: WireframeNode[], indent = '') {
@@ -302,7 +302,7 @@ export function renderToPage(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[Stage E] Error:', message);
+    console.error('[Stage 5] Error:', message);
     return {
       stage: 'render',
       data: {
@@ -313,7 +313,7 @@ export function renderToPage(
         children: [],
       },
       durationMs: Date.now() - start,
-      error: `Stage E failed: ${message}`,
+      error: `Stage 5 failed: ${message}`,
     };
   }
 }

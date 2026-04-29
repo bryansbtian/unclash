@@ -24,6 +24,11 @@ export function useEditorKeyboard() {
     setActiveTool,
     getSelectedNode,
     updateNode,
+    selectedElementId,
+    copyCodeElement,
+    pasteCodeElement,
+    duplicateCodeElement,
+    deleteCodeElement,
   } = useEditorStore();
 
   useEffect(() => {
@@ -164,6 +169,9 @@ export function useEditorKeyboard() {
         if (selectedNodeId) {
           e.preventDefault();
           copyNode(selectedNodeId);
+        } else if (selectedElementId) {
+          e.preventDefault();
+          copyCodeElement(selectedElementId);
         }
         return;
       }
@@ -171,7 +179,11 @@ export function useEditorKeyboard() {
       // Ctrl+V → Paste
       if (ctrl && e.key === 'v') {
         e.preventDefault();
-        pasteNode();
+        if (selectedElementId) {
+          pasteCodeElement();
+        } else {
+          pasteNode();
+        }
         return;
       }
 
@@ -180,6 +192,9 @@ export function useEditorKeyboard() {
         if (selectedNodeId) {
           e.preventDefault();
           duplicateNode(selectedNodeId);
+        } else if (selectedElementId) {
+          e.preventDefault();
+          duplicateCodeElement(selectedElementId);
         }
         return;
       }
@@ -189,6 +204,9 @@ export function useEditorKeyboard() {
         if (selectedNodeId) {
           e.preventDefault();
           deleteNode(selectedNodeId);
+        } else if (selectedElementId) {
+          e.preventDefault();
+          deleteCodeElement(selectedElementId);
         }
         return;
       }
@@ -196,5 +214,9 @@ export function useEditorKeyboard() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodeId, undo, redo, copyNode, pasteNode, deleteNode, duplicateNode, setActiveTool, getSelectedNode, updateNode]);
+  }, [
+    selectedNodeId, selectedElementId, undo, redo, copyNode, pasteNode, deleteNode, duplicateNode,
+    copyCodeElement, pasteCodeElement, deleteCodeElement, duplicateCodeElement,
+    setActiveTool, getSelectedNode, updateNode
+  ]);
 }

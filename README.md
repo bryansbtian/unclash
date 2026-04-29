@@ -46,7 +46,7 @@ Screenshot
     │
     ▼
 ┌─────────────────────────────────────────────────────┐
-│  Stage F — React Component Generation               │
+│  Stage 1 — React Component Generation               │
 │  Model: claude-haiku-4-5 (fast)                     │
 │                                                     │
 │  Given the screenshot, generates a self-contained   │
@@ -63,7 +63,7 @@ Screenshot
                        │
                        ▼
 ┌─────────────────────────────────────────────────────┐
-│  Parse Stage — Component Tree Extraction            │
+│  Stage 2 — Component Tree Extraction                │
 │  Deterministic (no LLM)                             │
 │                                                     │
 │  Two passes:                                        │
@@ -153,7 +153,7 @@ src/
 ├── services/
 │   ├── pipeline/
 │   │   ├── prompts.ts                  # System prompts for all AI stages
-│   │   └── stageF-codegen.ts           # Stage F — React code generation
+│   │   └── stage6-codegen.ts           # Stage 6 — React code generation
 │   ├── anthropic.ts                    # Anthropic API client
 │   └── codeGenerator.ts               # Export bundler (React + Tailwind files)
 ├── store/

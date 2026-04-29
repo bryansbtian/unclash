@@ -274,14 +274,6 @@ export default function HomePage() {
                     </button>
                   </div>
                 ))}
-                {screenshots.length < MAX_SCREENSHOTS && (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-20 h-14 rounded-lg border-2 border-dashed border-white/10 hover:border-indigo-500/50 flex items-center justify-center text-(--text-muted) hover:text-indigo-400 transition-colors"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
-                )}
               </div>
             )}
 

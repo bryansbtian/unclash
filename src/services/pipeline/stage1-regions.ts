@@ -1,5 +1,5 @@
 /**
- * Stage A: Top-Level Region Detection
+ * Stage 1: Top-Level Region Detection
  *
  * Uses Anthropic tool-based structured outputs to detect only
  * the major page regions (header, sidebar, main-content, etc.).
@@ -8,8 +8,8 @@
 
 import { z } from 'zod';
 import {
-  StageAOutput,
-  StageAOutputSchema,
+  Stage1Output,
+  Stage1OutputSchema,
   TopLevelRegionSchema,
   StageResult,
 } from '@/types/pipeline';
@@ -23,7 +23,7 @@ export async function detectTopLevelRegions(
   imageDataUrl: string,
   userPrompt: string | undefined,
   model: string,
-): Promise<StageResult<StageAOutput>> {
+): Promise<StageResult<Stage1Output>> {
   const start = Date.now();
 
   try {
@@ -38,7 +38,7 @@ export async function detectTopLevelRegions(
         dataUrlToAnthropicBlock(imageDataUrl),
         { type: 'text', text: userText },
       ],
-      schema: StageAOutputSchema,
+      schema: Stage1OutputSchema,
       toolName: 'top_level_regions',
       toolDescription:
         'Return the screenshot viewport dimensions and all structurally meaningful, non-overlapping top-level regions.',
@@ -47,7 +47,7 @@ export async function detectTopLevelRegions(
     });
 
     console.log(
-      `[Stage A] Detected ${parsed.regions.length} top-level regions in ${Date.now() - start}ms`,
+      `[Stage 1] Detected ${parsed.regions.length} top-level regions in ${Date.now() - start}ms`,
     );
 
     return {
@@ -57,12 +57,12 @@ export async function detectTopLevelRegions(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[Stage A] Error:', message);
+    console.error('[Stage 1] Error:', message);
     return {
       stage: 'regions',
       data: { viewport: { width: 1440, height: 900 }, regions: [] },
       durationMs: Date.now() - start,
-      error: `Stage A failed: ${message}`,
+      error: `Stage 1 failed: ${message}`,
     };
   }
 }
@@ -159,7 +159,7 @@ export async function detectMultiScreenshotRegions(
   model: string,
 ): Promise<
   StageResult<{
-    pages: Array<{ pageId: string; pageName: string; stageA: StageAOutput }>;
+    pages: Array<{ pageId: string; pageName: string; stage1: Stage1Output }>;
   }>
 > {
   const start = Date.now();
@@ -198,11 +198,11 @@ You are analyzing MULTIPLE screenshots. First determine if they show the same pa
     const pages = parsed.pages.map((p) => ({
       pageId: p.pageId,
       pageName: p.pageName,
-      stageA: { viewport: p.viewport, regions: p.regions } as StageAOutput,
+      stage1: { viewport: p.viewport, regions: p.regions } as Stage1Output,
     }));
 
     console.log(
-      `[Stage A Multi] Detected ${pages.length} pages in ${Date.now() - start}ms`,
+      `[Stage 1 Multi] Detected ${pages.length} pages in ${Date.now() - start}ms`,
     );
 
     return {
@@ -212,12 +212,12 @@ You are analyzing MULTIPLE screenshots. First determine if they show the same pa
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[Stage A Multi] Error:', message);
+    console.error('[Stage 1 Multi] Error:', message);
     return {
       stage: 'regions',
       data: { pages: [] },
       durationMs: Date.now() - start,
-      error: `Stage A multi failed: ${message}`,
+      error: `Stage 1 multi failed: ${message}`,
     };
   }
 }

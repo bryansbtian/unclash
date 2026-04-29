@@ -188,10 +188,29 @@ const SELECTION_RUNTIME = `
       }
     }, { passive: false });
 
-    // Forward Escape to parent so canvas can deselect even when iframe has focus
+    // Forward keyboard shortcuts to parent so canvas can handle them even when iframe has focus
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
         window.parent.postMessage({ __unclash: true, type: 'escape' }, '*');
+        return;
+      }
+      
+      // Do not forward if we are editing text
+      if (document.activeElement && document.activeElement.isContentEditable) return;
+
+      var ctrl = e.ctrlKey || e.metaKey;
+      var key = e.key.toLowerCase();
+      
+      if ((ctrl && (key === 'c' || key === 'v' || key === 'd' || key === 'z' || key === 'y')) || 
+          e.key === 'Delete' || e.key === 'Backspace') {
+        window.parent.postMessage({ 
+          __unclash: true, 
+          type: 'keydown', 
+          key: e.key, 
+          ctrlKey: e.ctrlKey, 
+          metaKey: e.metaKey, 
+          shiftKey: e.shiftKey 
+        }, '*');
       }
     });
 
@@ -542,6 +561,17 @@ export default function CodeFrame({ page }: Props) {
       if (msg.type === 'escape') {
         setSelectedElement(null);
         setSelectedRect(null);
+      }
+
+      if (msg.type === 'keydown') {
+        window.dispatchEvent(new KeyboardEvent('keydown', {
+          key: msg.key as string,
+          ctrlKey: msg.ctrlKey as boolean,
+          metaKey: msg.metaKey as boolean,
+          shiftKey: msg.shiftKey as boolean,
+          bubbles: true,
+          cancelable: true
+        }));
       }
 
       if (msg.type === 'text-edited' && msg.id && currentPageId) {

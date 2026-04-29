@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { Page, CodeNode } from '@/types/schema';
-import { generateComponentCode } from '@/services/pipeline/stageF-codegen';
-import { detectScreensInImage } from '@/services/pipeline/stageA-regions';
+import { generateComponentCode } from '@/services/pipeline/stage6-codegen';
+import { detectScreensInImage } from '@/services/pipeline/stage1-regions';
 import {
   generateText,
   getAnthropicFastModel,
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
         const pages: Page[] = [];
 
         if (hasImages) {
-          // ── Screenshot mode: Stage F first, then parse divs ──────────────
+          // ── Screenshot mode: Stage 2 (codegen) first, then parse divs ────
           type ImageGroup = {
             pageId: string;
             pageName: string;
@@ -152,18 +152,18 @@ export async function POST(request: NextRequest) {
             const viewport = pageViewport ?? { width: 1440, height: 900 };
             // Add a delay between screens to avoid hitting output token rate limits
             if (gi > 0) await sleep(12000);
-            // Stage F: generate React component
+            // Stage 2: generate React component
             send({ type: 'stage', id: 'codegen', status: 'running', label: 'Painting your UI' });
-            const stageFResult = await generateComponentCode(
+            const codegenResult = await generateComponentCode(
               dataUrl,
               viewport,
               FAST_MODEL,
               screenFocus,
             );
 
-            if (stageFResult.error && !stageFResult.data.code) {
-              send({ type: 'stage', id: 'codegen', status: 'failed', label: 'Painting your UI', description: stageFResult.error });
-              send({ type: 'error', message: stageFResult.error });
+            if (codegenResult.error && !codegenResult.data.code) {
+              send({ type: 'stage', id: 'codegen', status: 'failed', label: 'Painting your UI', description: codegenResult.error });
+              send({ type: 'error', message: codegenResult.error });
               controller.close();
               return;
             }
@@ -173,12 +173,12 @@ export async function POST(request: NextRequest) {
               id: 'codegen',
               status: 'complete',
               label: 'Painting your UI',
-              description: `${stageFResult.data.code.length} chars of magic`,
+              description: `${codegenResult.data.code.length} chars of magic`,
             });
 
             // Stage Parse: extract data-unclash-id elements from the generated JSX
             send({ type: 'stage', id: 'parse', status: 'running', label: 'Finding the pieces' });
-            const parsedNodes = parseCodeNodes(stageFResult.data.code);
+            const parsedNodes = parseCodeNodes(codegenResult.data.code);
             send({
               type: 'stage',
               id: 'parse',
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
               width: viewport.width,
               height: viewport.height,
               children: [],
-              code: stageFResult.data.code,
+              code: codegenResult.data.code,
             });
           }
         } else {

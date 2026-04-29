@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Page } from '@/types/schema';
-import { detectMultiScreenshotRegions } from '@/services/pipeline/stageA-regions';
-import { extractAllRegionChildren } from '@/services/pipeline/stageB-children';
-import { assembleSchema } from '@/services/pipeline/stageC-assemble';
-import { repairAndValidate } from '@/services/pipeline/stageD-repair';
-import { renderToPage } from '@/services/pipeline/stageE-render';
+import { detectMultiScreenshotRegions } from '@/services/pipeline/stage1-regions';
+import { extractAllRegionChildren } from '@/services/pipeline/stage2-children';
+import { assembleSchema } from '@/services/pipeline/stage3-assemble';
+import { repairAndValidate } from '@/services/pipeline/stage4-repair';
+import { renderToPage } from '@/services/pipeline/stage5-render';
 import { getAnthropicModel } from '@/services/anthropic';
 
 const MODEL = getAnthropicModel();
@@ -42,11 +42,11 @@ export async function POST(request: NextRequest) {
       const pd = multiResult.data.pages[i];
       const imageUrl = imageDataUrls[Math.min(i, imageDataUrls.length - 1)];
 
-      const stageB = await extractAllRegionChildren(imageUrl, pd.stageA.regions, MODEL);
-      const stageC = assembleSchema(pd.stageA, stageB.data);
-      const stageD = repairAndValidate(stageC.data, pd.stageA.viewport.width, pd.stageA.viewport.height);
-      const stageE = renderToPage(stageD.data, pd.pageName, pd.pageId);
-      pages.push(stageE.data);
+      const stage2 = await extractAllRegionChildren(imageUrl, pd.stage1.regions, MODEL);
+      const stage3 = assembleSchema(pd.stage1, stage2.data);
+      const stage4 = repairAndValidate(stage3.data, pd.stage1.viewport.width, pd.stage1.viewport.height);
+      const stage5 = renderToPage(stage4.data, pd.pageName, pd.pageId);
+      pages.push(stage5.data);
     }
 
     if (pages.length === 0) {

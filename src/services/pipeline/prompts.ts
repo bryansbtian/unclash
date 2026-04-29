@@ -1,14 +1,14 @@
 /**
  * Staged pipeline prompts.
  *
- * TOP_LEVEL_REGION_PROMPT  — Stage A: detect only top-level page regions
- * REGION_CHILDREN_PROMPT   — Stage B: extract children within a region
- * SCHEMA_REPAIR_PROMPT     — Stage D: normalize / repair the assembled tree
+ * TOP_LEVEL_REGION_PROMPT  — Stage 1: detect only top-level page regions
+ * REGION_CHILDREN_PROMPT   — Stage 2: extract children within a region
+ * SCHEMA_REPAIR_PROMPT     — Stage 4: normalize / repair the assembled tree
  * CHAT_MODIFY_PROMPT_V2    — Chat-based modifications with the richer schema
  */
 
 // ═════════════════════════════════════════════════════════════
-// Stage A — Top-Level Region Detection
+// Stage 1 — Top-Level Region Detection
 // ═════════════════════════════════════════════════════════════
 
 export const TOP_LEVEL_REGION_PROMPT = `You are a UI layout extraction engine for web pages and app screens.
@@ -83,7 +83,7 @@ IMPORTANT: If a right-panel or right sidebar is clearly visible (e.g. a projects
 Every pixel of the page should belong to exactly one top-level region.`;
 
 // ═════════════════════════════════════════════════════════════
-// Stage B — Region Child Extraction
+// Stage 2 — Region Child Extraction
 // ═════════════════════════════════════════════════════════════
 
 export const REGION_CHILDREN_PROMPT = `You are a semantic UI extraction engine for web pages and app screens.
@@ -180,7 +180,7 @@ Allowed semantic types include:
 section, container, hero-content, feature-grid, card-grid, card, stat-card, promo-card, product-card, pricing-card, testimonial-card, metric-tile, table, chart, list, nav-group, nav-item, navbar-link, filter-chip-row, chip, button, icon-button, CTA-group, input, search-input, form, form-row, avatar, badge, slider, logo, text, label, image-placeholder, tabs, tab-item, toggle, dropdown, divider`;
 
 // ═════════════════════════════════════════════════════════════
-// Stage D — Schema Repair
+// Stage 4 — Schema Repair
 // ═════════════════════════════════════════════════════════════
 
 export const SCHEMA_REPAIR_PROMPT = `You are a UI schema normalization and repair engine.
@@ -238,7 +238,7 @@ RULES:
 13. Preserve children arrays and nesting structure`;
 
 // ═════════════════════════════════════════════════════════════
-// Stage F — React Component Code Generation
+// Stage 6 — React Component Code Generation
 // ═════════════════════════════════════════════════════════════
 
 export const CODE_GEN_PROMPT = `You are an expert React developer. Generate a React functional component named App that faithfully recreates the provided UI screenshot as pixel-perfectly as possible.

@@ -32,33 +32,244 @@ function applyOverridesToCode(
   return result;
 }
 
+/**
+ * Transform AI-generated code into a clean, exportable React component.
+ *
+ * 1. Apply element overrides (style and text changes made in the editor)
+ * 2. Convert `const { Icon1, Icon2 } = lucide;` → `import { Icon1, Icon2 } from 'lucide-react';`
+ * 3. Strip all data-unclash-id attributes (editor-only)
+ * 4. Wrap in a proper `export default function App()` module
+ */
+function prepareCodeForExport(rawCode: string, overrides: Record<string, ElementOverride>): { code: string; lucideImport: string } {
+  let code = applyOverridesToCode(rawCode, overrides);
+
+  // Extract lucide destructuring: `const { X, Y, Z } = lucide;`
+  let lucideImport = '';
+  const lucideMatch = code.match(/const\s*\{([^}]+)\}\s*=\s*lucide\s*;?/);
+  if (lucideMatch) {
+    const icons = lucideMatch[1].trim();
+    lucideImport = `import { ${icons} } from 'lucide-react';`;
+    // Remove the original destructuring line from the code
+    code = code.replace(lucideMatch[0], '').replace(/^\s*\n/, '');
+  }
+
+  // Strip data-unclash-id attributes (they're editor-only metadata)
+  code = code.replace(/\s*data-unclash-id="[^"]*"/g, '');
+
+  // ── Repair truncated code ──────────────────────────────────
+  // The AI sometimes generates code that is truncated due to token limits.
+  // Babel in the iframe is lenient, but esbuild in Vite is strict.
+  // Count unbalanced braces and parens and close them.
+  let braceDepth = 0;
+  let parenDepth = 0;
+  let inStr: string | null = null;
+
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i];
+    if (inStr) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === inStr) inStr = null;
+    } else {
+      if (ch === '"' || ch === "'" || ch === '`') inStr = ch;
+      else if (ch === '{') braceDepth++;
+      else if (ch === '}') braceDepth--;
+      else if (ch === '(') parenDepth++;
+      else if (ch === ')') parenDepth--;
+    }
+  }
+
+  // If there are unclosed parens/braces, the code was truncated — close them
+  if (braceDepth > 0 || parenDepth > 0) {
+    if (parenDepth > 0) {
+      code += '\n    </div>';
+      code += '\n  )'.repeat(parenDepth);
+    }
+    if (braceDepth > 0) {
+      code += '\n' + '}'.repeat(braceDepth);
+    }
+  }
+
+  return { code, lucideImport };
+}
+
 function generateCodeModeExport(pages: Page[]): Record<string, string> {
   const files: Record<string, string> = {};
 
-  for (let i = 0; i < pages.length; i++) {
-    const page = pages[i];
-    if (!page.code) continue;
+  // For single-page projects (the common case), generate a single App component.
+  // For multi-page, generate separate components and a simple tab switcher.
+  const codePages = pages.filter((p) => p.code);
+  if (codePages.length === 0) return files;
 
-    const overrides = page.elementOverrides ?? {};
-    const code = applyOverridesToCode(page.code, overrides);
+  if (codePages.length === 1) {
+    const page = codePages[0];
+    const { code, lucideImport } = prepareCodeForExport(page.code!, page.elementOverrides ?? {});
 
-    // Wrap the App function in a proper React file
-    const fileName = i === 0 ? 'src/app/page.tsx' : `src/app/${(page.name ?? `page-${i + 1}`).replace(/^\//, '').replace(/\//g, '-')}/page.tsx`;
-
-    files[fileName] = `'use client';
-
+    files['src/App.jsx'] = `import React from 'react';
+${lucideImport ? lucideImport + '\n' : ''}
 ${code}
 
 export default App;
 `;
+  } else {
+    // Multi-page: each page becomes its own component file
+    const componentNames: string[] = [];
+    for (let i = 0; i < codePages.length; i++) {
+      const page = codePages[i];
+      const { code, lucideImport } = prepareCodeForExport(page.code!, page.elementOverrides ?? {});
+      const safeName = (page.name ?? `Page${i + 1}`)
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .replace(/^([a-z])/, (_, c) => c.toUpperCase()) || `Page${i + 1}`;
+      componentNames.push(safeName);
+
+      // Rename function App → function PageName
+      const renamedCode = code.replace(/function\s+App\s*\(/, `function ${safeName}(`);
+
+      files[`src/pages/${safeName}.jsx`] = `import React from 'react';
+${lucideImport ? lucideImport + '\n' : ''}
+${renamedCode}
+
+export default ${safeName};
+`;
+    }
+
+    // Generate App.jsx as a tab switcher
+    const imports = componentNames.map((n) => `import ${n} from './pages/${n}';`).join('\n');
+    const tabs = componentNames.map((n, i) => {
+      const label = codePages[i].name ?? n;
+      return `    { name: '${label}', component: ${n} }`;
+    }).join(',\n');
+
+    files['src/App.jsx'] = `import React, { useState } from 'react';
+${imports}
+
+const pages = [
+${tabs}
+];
+
+export default function App() {
+  const [active, setActive] = useState(0);
+  const ActivePage = pages[active].component;
+
+  return (
+    <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {pages.length > 1 && (
+        <nav style={{ display: 'flex', gap: 0, borderBottom: '1px solid #e5e7eb', background: '#fff', flexShrink: 0 }}>
+          {pages.map((p, i) => (
+            <button
+              key={i}
+              onClick={() => setActive(i)}
+              style={{
+                padding: '10px 20px',
+                border: 'none',
+                borderBottom: i === active ? '2px solid #6366f1' : '2px solid transparent',
+                background: 'none',
+                color: i === active ? '#6366f1' : '#6b7280',
+                fontWeight: i === active ? 600 : 400,
+                cursor: 'pointer',
+                fontSize: 14,
+              }}
+            >
+              {p.name}
+            </button>
+          ))}
+        </nav>
+      )}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <ActivePage />
+      </div>
+    </div>
+  );
+}
+`;
   }
 
-  files['src/app/layout.tsx'] = generateLayout();
-  files['src/app/globals.css'] = `@import "tailwindcss";\n\n*, *::before, *::after { box-sizing: border-box; }\n`;
-  files['package.json'] = generatePackageJson();
-  files['tsconfig.json'] = generateTsConfig();
-  files['postcss.config.mjs'] = `export default { plugins: { "@tailwindcss/postcss": {} } };\n`;
-  files['README.md'] = `# Generated App\n\nGenerated by **Unclash** from a UI screenshot.\n\n## Getting Started\n\n\`\`\`bash\nnpm install\nnpm run dev\n\`\`\`\n`;
+  // ── main.jsx ──
+  files['src/main.jsx'] = `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+`;
+
+  // ── index.css ──
+  files['src/index.css'] = `*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { width: 100%; min-height: 100vh; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+#root { display: flex; flex-direction: column; }
+#root > * { width: 100% !important; max-width: 100vw !important; min-height: 100vh; }
+img, svg { max-width: 100%; height: auto; }
+`;
+
+  // ── index.html ──
+  files['index.html'] = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${pages[0]?.name ?? 'App'}</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+`;
+
+  // ── vite.config.js ──
+  files['vite.config.js'] = `import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+});
+`;
+
+  // ── package.json ──
+  files['package.json'] = JSON.stringify({
+    name: 'unclash-export',
+    private: true,
+    version: '0.0.0',
+    type: 'module',
+    scripts: {
+      dev: 'vite',
+      build: 'vite build',
+      preview: 'vite preview',
+    },
+    dependencies: {
+      'react': '^18.3.1',
+      'react-dom': '^18.3.1',
+      'lucide-react': '^0.400.0',
+    },
+    devDependencies: {
+      '@vitejs/plugin-react': '^4.3.1',
+      'vite': '^5.4.0',
+    },
+  }, null, 2);
+
+  // ── README.md ──
+  files['README.md'] = `# ${pages[0]?.name ?? 'Unclash Export'}
+
+Generated by [Unclash](https://unclash.dev) from a UI screenshot.
+
+## Getting Started
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+
+Open the URL shown in the terminal (usually http://localhost:5173).
+`;
 
   return files;
 }

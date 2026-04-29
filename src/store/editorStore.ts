@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { v4 as uuid } from "uuid";
 import { Page, WireframeNode, ElementOverride, SelectedElementInfo, CodeNode } from "@/types/schema";
 import { AlignmentGuide } from "@/components/canvas/alignmentGuides";
+import { extractElementCode, insertElementCode, duplicateElementCode, deleteElementCode } from '@/app/actions/astActions';
 
 const MAX_HISTORY = 50;
 
@@ -90,12 +91,17 @@ interface EditorState {
 
   // Clipboard
   copyNode: (id: string) => void;
-  pasteNode: () => void;
+  pasteNode: () => Promise<void>;
 
+  // Code mode actions
   // Code mode actions
   setCodeNodes: (nodes: CodeNode[]) => void;
   setSelectedElement: (id: string | null, info?: SelectedElementInfo) => void;
   updateElementOverride: (pageId: string, elementId: string, override: ElementOverride) => void;
+  copyCodeElement: (id: string) => Promise<void>;
+  pasteCodeElement: () => Promise<void>;
+  duplicateCodeElement: (id: string) => Promise<void>;
+  deleteCodeElement: (id: string) => Promise<void>;
 
   // Helpers
   getSelectedNode: () => WireframeNode | null;
@@ -505,18 +511,69 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!page) return;
     const node = findNodeInTree(page.children, id);
     if (!node) return;
-    set({ clipboard: deepCloneNode(node) });
+    
+    const clone = deepCloneNode(node);
+    set({ clipboard: clone });
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        navigator.clipboard.writeText(JSON.stringify({ "unclash-component": true, node: clone }));
+      }
+    } catch (err) {
+      console.warn("Failed to write to OS clipboard", err);
+    }
   },
 
-  pasteNode: () => {
+  pasteNode: async () => {
     const state = get();
     const page = state.pages.find((p) => p.id === state.currentPageId);
-    if (!page || !state.clipboard) return;
-    const clone = cloneWithNewIds(state.clipboard);
-    const newPage = {
-      ...page,
-      children: [...page.children, clone],
-    };
+    if (!page) return;
+
+    let nodeToPaste = state.clipboard;
+    
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim().startsWith("{") && text.includes("unclash-component")) {
+          const parsed = JSON.parse(text);
+          if (parsed["unclash-component"] && parsed.node) {
+            nodeToPaste = parsed.node;
+          }
+        }
+      }
+    } catch (err) {
+      // Ignore OS clipboard read errors (e.g. permission denied)
+    }
+
+    if (!nodeToPaste) return;
+
+    const clone = cloneWithNewIds(nodeToPaste);
+
+    // Smart Paste: if a container is selected, paste inside it.
+    let targetParentId: string | null = null;
+    if (state.selectedNodeId) {
+      const selected = findNodeInTree(page.children, state.selectedNodeId);
+      if (selected && ["container", "sidebar", "navbar", "card"].includes(selected.type)) {
+        targetParentId = selected.id;
+      }
+    }
+
+    let newPage: Page;
+    if (targetParentId) {
+      newPage = {
+        ...page,
+        children: updateNodeInTree(page.children, targetParentId, (parent) => ({
+          ...parent,
+          children: [...parent.children, clone],
+        })),
+      };
+    } else {
+      newPage = {
+        ...page,
+        children: [...page.children, clone],
+      };
+    }
+
     set({ ...pushHistory(state, newPage), selectedNodeId: clone.id });
   },
 
@@ -536,7 +593,75 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ...page,
       elementOverrides: { ...(page.elementOverrides ?? {}), [elementId]: merged },
     };
-    set({ pages: state.pages.map((p) => (p.id === pageId ? newPage : p)) });
+    set(pushHistory(state, newPage));
+  },
+
+  copyCodeElement: async (id) => {
+    const { pages, currentPageId } = get();
+    const page = pages.find((p) => p.id === currentPageId);
+    if (!page || !page.code) return;
+    
+    const extracted = await extractElementCode(page.code, id);
+    if (extracted) {
+      try {
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
+          await navigator.clipboard.writeText(JSON.stringify({ "unclash-code-element": true, code: extracted }));
+        }
+      } catch (err) {
+        console.warn("Failed to write code to OS clipboard", err);
+      }
+    }
+  },
+
+  pasteCodeElement: async () => {
+    const state = get();
+    const { pages, currentPageId, selectedElementId } = state;
+    const page = pages.find((p) => p.id === currentPageId);
+    if (!page || !page.code || !selectedElementId) return;
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim().startsWith("{") && text.includes("unclash-code-element")) {
+          const parsed = JSON.parse(text);
+          if (parsed["unclash-code-element"] && parsed.code) {
+            const modifiedCode = await insertElementCode(page.code, selectedElementId, parsed.code);
+            if (modifiedCode) {
+              const newPage = { ...page, code: modifiedCode };
+              set(pushHistory(state, newPage));
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to paste code element", err);
+    }
+  },
+
+  duplicateCodeElement: async (id) => {
+    const state = get();
+    const { pages, currentPageId } = state;
+    const page = pages.find((p) => p.id === currentPageId);
+    if (!page || !page.code) return;
+
+    const modifiedCode = await duplicateElementCode(page.code, id);
+    if (modifiedCode) {
+      const newPage = { ...page, code: modifiedCode };
+      set(pushHistory(state, newPage));
+    }
+  },
+
+  deleteCodeElement: async (id) => {
+    const state = get();
+    const { pages, currentPageId } = state;
+    const page = pages.find((p) => p.id === currentPageId);
+    if (!page || !page.code) return;
+
+    const modifiedCode = await deleteElementCode(page.code, id);
+    if (modifiedCode) {
+      const newPage = { ...page, code: modifiedCode };
+      set({ ...pushHistory(state, newPage), selectedElementId: null });
+    }
   },
 
   // ── Helpers ─────────────────────────────────────────────

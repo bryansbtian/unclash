@@ -30,6 +30,11 @@ export default function Toolbar() {
     redo,
     copyNode,
     pasteNode,
+    selectedElementId,
+    copyCodeElement,
+    pasteCodeElement,
+    duplicateCodeElement,
+    deleteCodeElement,
   } = useEditorStore();
 
   // Subscribe directly so buttons re-render when history changes
@@ -99,16 +104,21 @@ export default function Toolbar() {
       <div className="flex items-center gap-1">
         {/* Copy / Paste */}
         <button
-          onClick={() => selectedNodeId && copyNode(selectedNodeId)}
-          disabled={!selectedNodeId}
+          onClick={() => {
+            if (selectedNodeId) copyNode(selectedNodeId);
+            else if (selectedElementId) copyCodeElement(selectedElementId);
+          }}
+          disabled={!selectedNodeId && !selectedElementId}
           className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-slate-100 hover:text-[var(--text-primary)] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
           title="Copy (Ctrl+C)"
         >
           <Clipboard className="w-3.5 h-3.5" />
         </button>
         <button
-          onClick={pasteNode}
-          disabled={!clipboard}
+          onClick={() => {
+            if (selectedElementId) pasteCodeElement();
+            else pasteNode();
+          }}
           className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-slate-100 hover:text-[var(--text-primary)] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
           title="Paste (Ctrl+V)"
         >
@@ -120,16 +130,22 @@ export default function Toolbar() {
 
         {/* Duplicate / Delete */}
         <button
-          onClick={() => selectedNodeId && duplicateNode(selectedNodeId)}
-          disabled={!selectedNodeId}
+          onClick={() => {
+            if (selectedNodeId) duplicateNode(selectedNodeId);
+            else if (selectedElementId) duplicateCodeElement(selectedElementId);
+          }}
+          disabled={!selectedNodeId && !selectedElementId}
           className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-slate-100 hover:text-[var(--text-primary)] disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
           title="Duplicate (Ctrl+D)"
         >
           <Copy className="w-3.5 h-3.5" />
         </button>
         <button
-          onClick={() => selectedNodeId && deleteNode(selectedNodeId)}
-          disabled={!selectedNodeId}
+          onClick={() => {
+            if (selectedNodeId) deleteNode(selectedNodeId);
+            else if (selectedElementId) deleteCodeElement(selectedElementId);
+          }}
+          disabled={!selectedNodeId && !selectedElementId}
           className="p-1.5 rounded-md text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-400 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
           title="Delete (Del)"
         >

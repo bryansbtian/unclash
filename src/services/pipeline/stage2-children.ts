@@ -1,5 +1,5 @@
 /**
- * Stage B: Region Component Extraction
+ * Stage 2: Region Component Extraction
  *
  * For each top-level region, detect nested children and leaf components.
  * Uses Anthropic tool-based structured outputs per region and runs regions in parallel for speed.
@@ -7,8 +7,8 @@
 
 import {
   TopLevelRegion,
-  StageBOutput,
-  StageBOutputSchema,
+  Stage2Output,
+  Stage2OutputSchema,
   StageResult,
 } from '@/types/pipeline';
 import { REGION_CHILDREN_PROMPT } from './prompts';
@@ -21,7 +21,7 @@ async function extractRegionChildren(
   imageDataUrl: string,
   region: TopLevelRegion,
   model: string,
-): Promise<StageBOutput> {
+): Promise<Stage2Output> {
   const regionContext = `Region to analyze:
 - id: "${region.id}"
 - type: "${region.type}"
@@ -42,7 +42,7 @@ Return a HIGH-FIDELITY wireframe tree:
       dataUrlToAnthropicBlock(imageDataUrl),
       { type: 'text', text: regionContext },
     ],
-    schema: StageBOutputSchema,
+    schema: Stage2OutputSchema,
     toolName: 'region_children',
     toolDescription:
       'Return the complete semantic child tree for the requested top-level region, with child bounds relative to the region origin.',
@@ -55,13 +55,13 @@ export async function extractAllRegionChildren(
   imageDataUrl: string,
   regions: TopLevelRegion[],
   model: string,
-): Promise<StageResult<StageBOutput[]>> {
+): Promise<StageResult<Stage2Output[]>> {
   const start = Date.now();
 
   try {
     // Run region extractions with limited concurrency to avoid rate limit bursts.
     const CONCURRENCY = 2;
-    const results: StageBOutput[] = [];
+    const results: Stage2Output[] = [];
     for (let i = 0; i < regions.length; i += CONCURRENCY) {
       const batch = regions.slice(i, i + CONCURRENCY);
       const batchResults = await Promise.all(
@@ -69,10 +69,10 @@ export async function extractAllRegionChildren(
           extractRegionChildren(imageDataUrl, region, model).catch(
             (err) => {
               console.warn(
-                `[Stage B] Failed for region "${region.id}":`,
+                `[Stage 2] Failed for region "${region.id}":`,
                 err instanceof Error ? err.message : err,
               );
-              return { regionId: region.id, children: [] } as StageBOutput;
+              return { regionId: region.id, children: [] } as Stage2Output;
             },
           ),
         ),
@@ -86,7 +86,7 @@ export async function extractAllRegionChildren(
     );
 
     console.log(
-      `[Stage B] Extracted ${totalChildren} child nodes across ${regions.length} regions in ${Date.now() - start}ms`,
+      `[Stage 2] Extracted ${totalChildren} child nodes across ${regions.length} regions in ${Date.now() - start}ms`,
     );
 
     return {
@@ -96,18 +96,18 @@ export async function extractAllRegionChildren(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[Stage B] Error:', message);
+    console.error('[Stage 2] Error:', message);
     return {
       stage: 'children',
       data: [],
       durationMs: Date.now() - start,
-      error: `Stage B failed: ${message}`,
+      error: `Stage 2 failed: ${message}`,
     };
   }
 }
 
 function countChildren(
-  children: StageBOutput['children'],
+  children: Stage2Output['children'],
 ): number {
   return children.reduce(
     (sum, c) => sum + 1 + countChildren(c.children),

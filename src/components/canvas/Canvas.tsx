@@ -247,8 +247,8 @@ export default function Canvas() {
       }
       // Ctrl+V → paste
       if (ctrl && e.key === 'v') {
-        const { clipboard, pasteNode } = useEditorStore.getState();
-        if (clipboard) { e.preventDefault(); pasteNode(); }
+        e.preventDefault();
+        useEditorStore.getState().pasteNode();
         return;
       }
       // Ctrl+D → duplicate

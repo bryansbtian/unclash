@@ -1,5 +1,5 @@
 /**
- * Stage F: React Component Code Generation
+ * Stage 6: React Component Code Generation
  *
  * Uses the screenshot to generate a self-contained React functional component
  * (function App) with Tailwind CSS classes and data-unclash-id attributes on
@@ -114,7 +114,7 @@ export async function generateComponentCode(
       if (fnMatch) {
         code = fnMatch[1].trim();
       } else {
-        console.warn('[Stage F] Model did not return a function App() body. Raw output:', raw.slice(0, 200));
+        console.warn('[Stage 6] Model did not return a function App() body. Raw output:', raw.slice(0, 200));
         return {
           stage: 'codegen',
           data: { code: '' },

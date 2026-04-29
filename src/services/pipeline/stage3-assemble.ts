@@ -1,7 +1,7 @@
 /**
- * Stage C: Layout Schema Assembly
+ * Stage 3: Layout Schema Assembly
  *
- * Merges Stage A (top-level regions) and Stage B (region children)
+ * Merges Stage 1 (top-level regions) and Stage 2 (region children)
  * into a single hierarchical UINode tree. This is a deterministic step
  * with no LLM calls.
  */
@@ -9,9 +9,9 @@
 import {
   UINode,
   TopLevelRegion,
-  StageBOutput,
+  Stage2Output,
   RegionChild,
-  StageAOutput,
+  Stage1Output,
   StageResult,
 } from '@/types/pipeline';
 
@@ -58,18 +58,18 @@ function regionChildToUINode(
 }
 
 export function assembleSchema(
-  stageA: StageAOutput,
-  stageB: StageBOutput[],
+  stage1: Stage1Output,
+  stage2: Stage2Output[],
 ): StageResult<UINode> {
   const start = Date.now();
 
   try {
-    const childrenByRegion = new Map<string, StageBOutput>();
-    for (const b of stageB) {
+    const childrenByRegion = new Map<string, Stage2Output>();
+    for (const b of stage2) {
       childrenByRegion.set(b.regionId, b);
     }
 
-    const rootChildren: UINode[] = stageA.regions.map(
+    const rootChildren: UINode[] = stage1.regions.map(
       (region: TopLevelRegion) => {
         const regionChildren = childrenByRegion.get(region.id);
 
@@ -96,8 +96,8 @@ export function assembleSchema(
       bounds: {
         x: 0,
         y: 0,
-        width: stageA.viewport.width,
-        height: stageA.viewport.height,
+        width: stage1.viewport.width,
+        height: stage1.viewport.height,
       },
       children: rootChildren,
       confidence: 1.0,
@@ -107,7 +107,7 @@ export function assembleSchema(
     const maxDepth = measureDepth(root);
 
     console.log(
-      `[Stage C] Assembled ${totalNodes} nodes (depth ${maxDepth}) in ${Date.now() - start}ms`,
+      `[Stage 3] Assembled ${totalNodes} nodes (depth ${maxDepth}) in ${Date.now() - start}ms`,
     );
 
     return {
@@ -117,7 +117,7 @@ export function assembleSchema(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[Stage C] Error:', message);
+    console.error('[Stage 3] Error:', message);
     return {
       stage: 'assemble',
       data: {
@@ -126,14 +126,14 @@ export function assembleSchema(
         bounds: {
           x: 0,
           y: 0,
-          width: stageA.viewport.width,
-          height: stageA.viewport.height,
+          width: stage1.viewport.width,
+          height: stage1.viewport.height,
         },
         children: [],
         confidence: 1.0,
       },
       durationMs: Date.now() - start,
-      error: `Stage C failed: ${message}`,
+      error: `Stage 3 failed: ${message}`,
     };
   }
 }

@@ -183,6 +183,11 @@ export default function ToolsBar() {
     canUndo,
     canRedo,
   } = useEditorStore();
+
+  // Subscribe directly so buttons re-render when history changes
+  useEditorStore(s => s.historyIndex);
+  useEditorStore(s => s.history.length);
+
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   return (

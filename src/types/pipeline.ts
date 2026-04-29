@@ -72,7 +72,7 @@ export const UI_NODE_TYPES = [
 export type UINodeType = (typeof UI_NODE_TYPES)[number];
 
 // ── Zod Schemas ─────────────────────────────────────────────
-// Stage A and B schemas are shared between Anthropic tool schemas and local validation.
+// Stage 1 and 2 schemas are shared between Anthropic tool schemas and local validation.
 // Nullable fields keep the model output shape explicit and predictable.
 
 export const BoundsSchema = z.object({
@@ -139,7 +139,7 @@ export interface UINode {
   warnings?: string[];
 }
 
-// ── Stage A: Top-Level Region Output ────────────────────────
+// ── Stage 1: Top-Level Region Output ────────────────────────
 
 export const TopLevelRegionSchema = z.object({
   id: z.string(),
@@ -157,17 +157,17 @@ export type TopLevelRegion = {
   confidence: number;
 };
 
-export const StageAOutputSchema = z.object({
+export const Stage1OutputSchema = z.object({
   viewport: z.object({ width: z.number(), height: z.number() }),
   regions: z.array(TopLevelRegionSchema),
 });
 
-export type StageAOutput = {
+export type Stage1Output = {
   viewport: { width: number; height: number };
   regions: TopLevelRegion[];
 };
 
-// ── Stage B: Region Children Output ─────────────────────────
+// ── Stage 2: Region Children Output ─────────────────────────
 
 export const RegionChildSchema: z.ZodType<RegionChildZod> = z.lazy(() =>
   z.object({
@@ -213,17 +213,17 @@ export interface RegionChild {
   children: RegionChild[];
 }
 
-export const StageBOutputSchema = z.object({
+export const Stage2OutputSchema = z.object({
   regionId: z.string(),
   children: z.array(RegionChildSchema),
 });
 
-export type StageBOutput = {
+export type Stage2Output = {
   regionId: string;
   children: RegionChild[];
 };
 
-// ── Validated UI Schema (output of Stage D) ─────────────────
+// ── Validated UI Schema (output of Stage 4) ─────────────────
 
 export interface ValidatedUISchema {
   root: UINode;

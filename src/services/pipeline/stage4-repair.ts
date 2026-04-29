@@ -1,5 +1,5 @@
 /**
- * Stage D: Schema Repair and Validation
+ * Stage 4: Schema Repair and Validation
  *
  * Deterministic validation and repair of the assembled UINode tree.
  * Fixes invalid nesting, merges duplicates, normalizes repeated
@@ -102,7 +102,7 @@ export function repairAndValidate(
     const stats = computeStats(tree);
 
     console.log(
-      `[Stage D] Validated: ${stats.totalNodes} nodes, ${warnings.length} warnings in ${Date.now() - start}ms`,
+      `[Stage 4] Validated: ${stats.totalNodes} nodes, ${warnings.length} warnings in ${Date.now() - start}ms`,
     );
 
     return {
@@ -118,7 +118,7 @@ export function repairAndValidate(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[Stage D] Error:', message);
+    console.error('[Stage 4] Error:', message);
     return {
       stage: 'validate',
       data: {
@@ -129,7 +129,7 @@ export function repairAndValidate(
         stats: { totalNodes: 0, maxDepth: 0, typeCounts: {} },
       },
       durationMs: Date.now() - start,
-      error: `Stage D failed: ${message}`,
+      error: `Stage 4 failed: ${message}`,
     };
   }
 }
